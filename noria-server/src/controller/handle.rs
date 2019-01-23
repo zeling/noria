@@ -16,7 +16,7 @@ use tokio_io_pool;
 pub struct WorkerHandle<A: Authority + 'static> {
     c: Option<ControllerHandle<A>>,
     #[allow(dead_code)]
-    event_tx: Option<futures::sync::mpsc::UnboundedSender<Event>>,
+    event_tx: Option<tokio_sync::mpsc::UnboundedSender<Event>>,
     kill: Option<Trigger>,
     iopool: Option<tokio_io_pool::Runtime>,
 }
@@ -37,7 +37,7 @@ impl<A: Authority> DerefMut for WorkerHandle<A> {
 impl<A: Authority + 'static> WorkerHandle<A> {
     pub(super) fn new(
         authority: Arc<A>,
-        event_tx: futures::sync::mpsc::UnboundedSender<Event>,
+        event_tx: tokio_sync::mpsc::UnboundedSender<Event>,
         kill: Trigger,
         io: tokio_io_pool::Runtime,
     ) -> impl Future<Item = Self, Error = failure::Error> {
@@ -52,9 +52,9 @@ impl<A: Authority + 'static> WorkerHandle<A> {
     #[cfg(test)]
     pub(crate) fn ready<E>(self) -> impl Future<Item = Self, Error = E> {
         let snd = self.event_tx.clone().unwrap();
-        future::loop_fn((self, snd), |(this, snd)| {
-            let (tx, rx) = futures::sync::oneshot::channel();
-            snd.unbounded_send(Event::IsReady(tx)).unwrap();
+        future::loop_fn((self, snd), |(this, mut snd)| {
+            let (tx, rx) = tokio_sync::oneshot::channel();
+            snd.try_send(Event::IsReady(tx)).unwrap();
             rx.map_err(|_| unimplemented!("worker loop went away"))
                 .and_then(|v| {
                     if v {
@@ -79,8 +79,8 @@ impl<A: Authority + 'static> WorkerHandle<A> {
         F: FnOnce(&mut Migration) -> T + Send + 'static,
         T: Send + 'static,
     {
-        let (ret_tx, ret_rx) = futures::sync::oneshot::channel();
-        let (fin_tx, fin_rx) = futures::sync::oneshot::channel();
+        let (ret_tx, ret_rx) = tokio_sync::oneshot::channel();
+        let (fin_tx, fin_rx) = tokio_sync::oneshot::channel();
         let b = Box::new(move |m: &mut Migration| -> () {
             if ret_tx.send(f(m)).is_err() {
                 unreachable!("could not return migration result");
@@ -90,7 +90,7 @@ impl<A: Authority + 'static> WorkerHandle<A> {
         self.event_tx
             .clone()
             .unwrap()
-            .unbounded_send(Event::ManualMigration { f: b, done: fin_tx })
+            .try_send(Event::ManualMigration { f: b, done: fin_tx })
             .unwrap();
 
         match fin_rx.wait() {

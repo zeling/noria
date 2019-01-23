@@ -16,3 +16,4 @@ tower-discover = { git = "https://github.com/jonhoo/tower.git", branch = "dynami
 tower-balance = { git = "https://github.com/jonhoo/tower.git", branch = "dynamic-balance"  }
 tower-buffer = { git = "https://github.com/jonhoo/tower.git", branch = "dynamic-balance"  }
 tower-util = { git = "https://github.com/jonhoo/tower.git", branch = "dynamic-balance"  }
+tokio-sync = { git = "https://github.com/jonhoo/tokio.git", branch = "debug-sender-no-t-debug" }

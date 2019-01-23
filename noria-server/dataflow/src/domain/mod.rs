@@ -9,7 +9,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time;
 
-use futures;
 use group_commit::GroupCommitQueueSet;
 use noria::channel::{self, TcpSender};
 pub use noria::internal::DomainIndex as Index;
@@ -826,7 +825,7 @@ impl Domain {
                                 let txs = (0..shards)
                                     .map(|shard| {
                                         let key = key.clone();
-                                        let (tx, rx) = futures::sync::mpsc::unbounded();
+                                        let (tx, rx) = tokio_sync::mpsc::unbounded_channel();
                                         let sender = self
                                             .channel_coordinator
                                             .builder_for(&(trigger_domain, shard))
@@ -836,7 +835,10 @@ impl Domain {
 
                                         tokio::spawn(
                                             self.shutdown_valve
-                                                .wrap(rx)
+                                                .wrap(rx.map_err(|_| {
+                                                    // NOTE: what kind of error would this even be?
+                                                    ()
+                                                }))
                                                 .map(move |miss| box Packet::RequestReaderReplay {
                                                     key: miss,
                                                     cols: key.clone(),
@@ -857,16 +859,19 @@ impl Domain {
                                     })
                                     .collect::<Vec<_>>();
                                 let (r_part, w_part) =
-                                    backlog::new_partial(cols, &k[..], move |miss| {
-                                        let n = txs.len();
-                                        let tx = if n == 1 {
-                                            &txs[0]
-                                        } else {
-                                            // TODO: compound reader
-                                            assert_eq!(miss.len(), 1);
-                                            &txs[::shard_by(&miss[0], n)]
-                                        };
-                                        tx.unbounded_send(Vec::from(miss)).is_ok()
+                                    backlog::new_partial(cols, &k[..], move || {
+                                        let mut txs = txs.clone();
+                                        Box::new(move |miss: &[DataType]| {
+                                            let n = txs.len();
+                                            let tx = if n == 1 {
+                                                &mut txs[0]
+                                            } else {
+                                                // TODO: compound reader
+                                                assert_eq!(miss.len(), 1);
+                                                &mut txs[::shard_by(&miss[0], n)]
+                                            };
+                                            tx.try_send(Vec::from(miss)).is_ok()
+                                        })
                                     });
 
                                 let mut n = self.nodes[node].borrow_mut();

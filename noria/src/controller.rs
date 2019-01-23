@@ -466,7 +466,7 @@ where
         A: Send + 'static,
     {
         let fut = ControllerHandle::new(authority);
-        let (tx, rx) = futures::sync::oneshot::channel();
+        let (tx, rx) = tokio_sync::oneshot::channel();
         executor
             .spawn(Box::new(
                 fut.then(move |r| tx.send(r)).map_err(|_| unreachable!()),
@@ -484,7 +484,7 @@ where
         F::Item: Send + 'static,
         F::Error: Send + 'static,
     {
-        let (tx, rx) = futures::sync::oneshot::channel();
+        let (tx, rx) = tokio_sync::oneshot::channel();
         self.executor
             .spawn(Box::new(
                 fut.into_future()

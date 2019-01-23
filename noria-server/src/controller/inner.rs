@@ -74,7 +74,7 @@ pub struct ControllerInner {
     pub(crate) replies: DomainReplies,
 }
 
-pub(crate) struct DomainReplies(futures::sync::mpsc::UnboundedReceiver<ControlReplyPacket>);
+pub(crate) struct DomainReplies(tokio_sync::mpsc::UnboundedReceiver<ControlReplyPacket>);
 
 impl DomainReplies {
     fn read_n_domain_replies(&mut self, n: usize) -> Vec<ControlReplyPacket> {
@@ -403,7 +403,7 @@ impl ControllerInner {
     pub(super) fn new(
         log: slog::Logger,
         state: ControllerState,
-        drx: futures::sync::mpsc::UnboundedReceiver<ControlReplyPacket>,
+        drx: tokio_sync::mpsc::UnboundedReceiver<ControlReplyPacket>,
     ) -> Self {
         let mut g = petgraph::Graph::new();
         let source = g.add_node(node::Node::new(

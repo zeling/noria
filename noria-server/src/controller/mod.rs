@@ -18,7 +18,6 @@ use dataflow::{
 use failure::{self, ResultExt};
 use fnv::{FnvHashMap, FnvHashSet};
 use futures::stream::futures_unordered::FuturesUnordered;
-use futures::sync::mpsc::UnboundedSender;
 use futures::{self, Future, Sink, Stream};
 use hyper::{self, header::CONTENT_TYPE, Method, StatusCode};
 use noria::channel::{self, DualTcpStream, TcpSender, CONNECTION_FROM_BASE};
@@ -44,6 +43,7 @@ use tokio;
 use tokio::prelude::future::{poll_fn, Either};
 use tokio::prelude::*;
 use tokio_io_pool;
+use tokio_sync::mpsc::UnboundedSender;
 use tokio_threadpool::blocking;
 use tokio_tower::multiplex::server;
 use tower_util::ServiceFn;
@@ -156,17 +156,17 @@ enum Event {
         String,
         Option<String>,
         Vec<u8>,
-        futures::sync::oneshot::Sender<Result<Result<String, String>, StatusCode>>,
+        tokio_sync::oneshot::Sender<Result<Result<String, String>, StatusCode>>,
     ),
     LeaderChange(ControllerState, ControllerDescriptor),
     WonLeaderElection(ControllerState),
     CampaignError(failure::Error),
     #[cfg(test)]
-    IsReady(futures::sync::oneshot::Sender<bool>),
+    IsReady(tokio_sync::oneshot::Sender<bool>),
     #[cfg(test)]
     ManualMigration {
         f: Box<FnBox(&mut Migration) + Send + 'static>,
-        done: futures::sync::oneshot::Sender<()>,
+        done: tokio_sync::oneshot::Sender<()>,
     },
 }
 
@@ -206,9 +206,9 @@ fn start_instance<A: Authority + 'static>(
     let ioh = iopool.handle().clone();
 
     let (trigger, valve) = Valve::new();
-    let (tx, rx) = futures::sync::mpsc::unbounded();
+    let (tx, rx) = tokio_sync::mpsc::unbounded_channel();
 
-    let (dtx, drx) = futures::sync::mpsc::unbounded();
+    let (dtx, drx) = tokio_sync::mpsc::unbounded_channel();
     let v = try {
         // we'll be listening for a couple of different types of events:
         // first, events from workers
@@ -263,8 +263,8 @@ fn start_instance<A: Authority + 'static>(
     // set up different loops for the controller "part" and the worker "part" of us. this is
     // necessary because sometimes the two need to communicate (e.g., for migrations), and if they
     // were in a single loop, that could deadlock.
-    let (ctrl_tx, ctrl_rx) = futures::sync::mpsc::unbounded();
-    let (worker_tx, worker_rx) = futures::sync::mpsc::unbounded();
+    let (ctrl_tx, ctrl_rx) = tokio_sync::mpsc::unbounded_channel();
+    let (worker_tx, worker_rx) = tokio_sync::mpsc::unbounded_channel();
 
     // first, a loop that just forwards to the appropriate place
     tokio::spawn(
@@ -386,7 +386,7 @@ fn start_instance<A: Authority + 'static>(
                             let (trigger, valve) = Valve::new();
 
                             // TODO: memory stuff should probably also be in config?
-                            let (rep_tx, rep_rx) = futures::sync::mpsc::unbounded();
+                            let (rep_tx, rep_rx) = tokio_sync::mpsc::unbounded_channel();
                             let ctrl = listen_df(
                                 valve,
                                 &ioh,
@@ -614,7 +614,7 @@ fn listen_df(
     waddr: SocketAddr,
     coord: Arc<ChannelCoordinator>,
     on: IpAddr,
-    replicas: futures::sync::mpsc::UnboundedReceiver<DomainBuilder>,
+    replicas: tokio_sync::mpsc::UnboundedReceiver<DomainBuilder>,
 ) -> Result<(), failure::Error> {
     // first, try to connect to controller
     let ctrl = ::std::net::TcpStream::connect(&desc.worker_addr)?;
@@ -636,7 +636,7 @@ fn listen_df(
     let epoch = state.epoch;
     let heartbeat_every = state.config.heartbeat_every;
 
-    let (ctrl_tx, ctrl_rx) = futures::sync::mpsc::unbounded();
+    let (ctrl_tx, ctrl_rx) = tokio_sync::mpsc::unbounded_channel();
 
     // reader setup
     let readers = Arc::new(Mutex::new(HashMap::new()));
@@ -682,7 +682,9 @@ fn listen_df(
                 // and start sending heartbeats
                 timer
                     .map(|_| CoordinationPayload::Heartbeat)
-                    .map_err(|e| -> futures::sync::mpsc::SendError<_> { panic!("{:?}", e) })
+                    .map_err(|e| -> tokio_sync::mpsc::error::UnboundedSendError {
+                        panic!("{:?}", e)
+                    })
                     .forward(ctrl_tx.clone())
                     .map(|_| ())
             })
@@ -733,7 +735,7 @@ fn listen_df(
                         state_size.clone(),
                     );
 
-                    let (tx, rx) = futures::sync::mpsc::unbounded();
+                    let (tx, rx) = tokio_sync::mpsc::unbounded_channel();
 
                     // need to register the domain with the local channel coordinator.
                     // local first to ensure that we don't unnecessarily give away remote for a
@@ -909,7 +911,7 @@ fn listen_external<A: Authority + 'static>(
             let event_tx = self.0.clone();
             Box::new(req.into_body().concat2().and_then(move |body| {
                 let body: Vec<u8> = body.iter().cloned().collect();
-                let (tx, rx) = futures::sync::oneshot::channel();
+                let (tx, rx) = tokio_sync::oneshot::channel();
                 event_tx
                     .clone()
                     .send(Event::ExternalRequest(method, path, query, body, tx))
@@ -1118,7 +1120,7 @@ struct Replica {
 
     incoming: Valved<tokio::net::tcp::Incoming>,
     first_byte: FuturesUnordered<tokio::io::ReadExact<tokio::net::tcp::TcpStream, Vec<u8>>>,
-    locals: futures::sync::mpsc::UnboundedReceiver<Box<Packet>>,
+    locals: tokio_sync::mpsc::UnboundedReceiver<Box<Packet>>,
     inputs: StreamUnordered<
         DualTcpStream<
             BufStream<tokio::net::TcpStream>,
@@ -1145,8 +1147,8 @@ impl Replica {
         valve: &Valve,
         mut domain: Domain,
         on: tokio::net::TcpListener,
-        locals: futures::sync::mpsc::UnboundedReceiver<Box<Packet>>,
-        ctrl_tx: futures::sync::mpsc::UnboundedSender<CoordinationPayload>,
+        locals: tokio_sync::mpsc::UnboundedReceiver<Box<Packet>>,
+        ctrl_tx: tokio_sync::mpsc::UnboundedSender<CoordinationPayload>,
         log: slog::Logger,
         cc: Arc<ChannelCoordinator>,
     ) -> Self {
@@ -1364,11 +1366,11 @@ struct OutOfBand {
     pending: FnvHashSet<usize>,
 
     // for sending messages to the controller
-    ctrl_tx: futures::sync::mpsc::UnboundedSender<CoordinationPayload>,
+    ctrl_tx: tokio_sync::mpsc::UnboundedSender<CoordinationPayload>,
 }
 
 impl OutOfBand {
-    fn new(ctrl_tx: futures::sync::mpsc::UnboundedSender<CoordinationPayload>) -> Self {
+    fn new(ctrl_tx: tokio_sync::mpsc::UnboundedSender<CoordinationPayload>) -> Self {
         OutOfBand {
             back: Default::default(),
             pending: Default::default(),
@@ -1384,7 +1386,7 @@ impl Executor for OutOfBand {
 
     fn create_universe(&mut self, universe: HashMap<String, DataType>) {
         self.ctrl_tx
-            .unbounded_send(CoordinationPayload::CreateUniverse(universe))
+            .try_send(CoordinationPayload::CreateUniverse(universe))
             .expect("asked to send to controller, but controller has gone away");
     }
 }

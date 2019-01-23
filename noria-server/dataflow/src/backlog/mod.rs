@@ -20,7 +20,7 @@ pub(crate) fn new_partial<F>(
     trigger: F,
 ) -> (SingleReadHandle, WriteHandle)
 where
-    F: Fn(&[DataType]) -> bool + 'static + Send + Sync,
+    F: Fn() -> Box<FnMut(&[DataType]) -> bool + 'static + Send + Sync> + 'static + Send + Sync,
 {
     new_inner(cols, key, Some(Arc::new(trigger)))
 }
@@ -28,7 +28,7 @@ where
 fn new_inner(
     cols: usize,
     key: &[usize],
-    trigger: Option<Arc<Fn(&[DataType]) -> bool + Send + Sync>>,
+    mk_trigger: Option<Arc<Fn() -> Box<FnMut(&[DataType]) -> bool + Send + Sync> + Send + Sync>>,
 ) -> (SingleReadHandle, WriteHandle) {
     let contiguous = {
         let mut contiguous = true;
@@ -65,16 +65,18 @@ fn new_inner(
     };
 
     let w = WriteHandle {
-        partial: trigger.is_some(),
+        partial: mk_trigger.is_some(),
         handle: w,
         key: Vec::from(key),
         cols: cols,
         contiguous,
         mem_size: 0,
     };
+    let trigger = mk_trigger.as_ref().map(|mk| mk());
     let r = SingleReadHandle {
         handle: r,
-        trigger: trigger,
+        mk_trigger,
+        trigger,
         key: Vec::from(key),
     };
 
@@ -293,23 +295,34 @@ impl SizeOf for WriteHandle {
 }
 
 /// Handle to get the state of a single shard of a reader.
-#[derive(Clone)]
 pub struct SingleReadHandle {
     handle: multir::Handle,
-    trigger: Option<Arc<Fn(&[DataType]) -> bool + Send + Sync>>,
+    mk_trigger: Option<Arc<Fn() -> Box<FnMut(&[DataType]) -> bool + Send + Sync> + Send + Sync>>,
+    trigger: Option<Box<FnMut(&[DataType]) -> bool + Send + Sync>>,
     key: Vec<usize>,
+}
+
+impl Clone for SingleReadHandle {
+    fn clone(&self) -> Self {
+        SingleReadHandle {
+            handle: self.handle.clone(),
+            mk_trigger: self.mk_trigger.clone(),
+            trigger: self.mk_trigger.as_ref().map(|f| f()),
+            key: self.key.clone(),
+        }
+    }
 }
 
 impl SingleReadHandle {
     /// Trigger a replay of a missing key from a partially materialized view.
-    pub fn trigger(&self, key: &[DataType]) -> bool {
+    pub fn trigger(&mut self, key: &[DataType]) -> bool {
         assert!(
             self.trigger.is_some(),
             "tried to trigger a replay for a fully materialized view"
         );
 
         // trigger a replay to populate
-        (*self.trigger.as_ref().unwrap())(key)
+        (*self.trigger.as_mut().unwrap())(key)
     }
 
     /// Find all entries that matched the given conditions.
@@ -320,7 +333,11 @@ impl SingleReadHandle {
     /// swapped in by the writer.
     ///
     /// Holes in partially materialized state are returned as `Ok((None, _))`.
-    pub fn try_find_and<F, T>(&self, key: &[DataType], mut then: F) -> Result<(Option<T>, i64), ()>
+    pub fn try_find_and<F, T>(
+        &mut self,
+        key: &[DataType],
+        mut then: F,
+    ) -> Result<(Option<T>, i64), ()>
     where
         F: FnMut(&[Vec<DataType>]) -> T,
     {
@@ -365,19 +382,20 @@ impl ReadHandle {
     /// swapped in by the writer.
     ///
     /// A hole in partially materialized state is returned as `Ok((None, _))`.
-    pub fn try_find_and<F, T>(&self, key: &[DataType], then: F) -> Result<(Option<T>, i64), ()>
+    pub fn try_find_and<F, T>(&mut self, key: &[DataType], then: F) -> Result<(Option<T>, i64), ()>
     where
         F: FnMut(&[Vec<DataType>]) -> T,
     {
         match *self {
-            ReadHandle::Sharded(ref shards) => {
+            ReadHandle::Sharded(ref mut shards) => {
                 assert_eq!(key.len(), 1);
-                shards[::shard_by(&key[0], shards.len())]
-                    .as_ref()
+                let nshards = shards.len();
+                (&mut shards[::shard_by(&key[0], nshards)])
+                    .as_mut()
                     .unwrap()
                     .try_find_and(key, then)
             }
-            ReadHandle::Singleton(ref srh) => srh.as_ref().unwrap().try_find_and(key, then),
+            ReadHandle::Singleton(ref mut srh) => srh.as_mut().unwrap().try_find_and(key, then),
         }
     }
 
@@ -420,7 +438,7 @@ mod tests {
     fn store_works() {
         let a = vec![1.into(), "a".into()];
 
-        let (r, mut w) = new(2, &[0]);
+        let (mut r, mut w) = new(2, &[0]);
 
         // initially, store is uninitialized
         assert_eq!(r.try_find_and(&a[0..1], |rs| rs.len()), Err(()));
@@ -453,7 +471,7 @@ mod tests {
         use std::thread;
 
         let n = 10000;
-        let (r, mut w) = new(1, &[0]);
+        let (mut r, mut w) = new(1, &[0]);
         thread::spawn(move || {
             for i in 0..n {
                 w.add(vec![Record::Positive(vec![i.into()])]);
@@ -479,7 +497,7 @@ mod tests {
         let a = vec![1.into(), "a".into()];
         let b = vec![1.into(), "b".into()];
 
-        let (r, mut w) = new(2, &[0]);
+        let (mut r, mut w) = new(2, &[0]);
         w.add(vec![Record::Positive(a.clone())]);
         w.swap();
         w.add(vec![Record::Positive(b.clone())]);
@@ -500,7 +518,7 @@ mod tests {
         let b = vec![1.into(), "b".into()];
         let c = vec![1.into(), "c".into()];
 
-        let (r, mut w) = new(2, &[0]);
+        let (mut r, mut w) = new(2, &[0]);
         w.add(vec![Record::Positive(a.clone())]);
         w.add(vec![Record::Positive(b.clone())]);
         w.swap();
@@ -528,7 +546,7 @@ mod tests {
         let a = vec![1.into(), "a".into()];
         let b = vec![1.into(), "b".into()];
 
-        let (r, mut w) = new(2, &[0]);
+        let (mut r, mut w) = new(2, &[0]);
         w.add(vec![Record::Positive(a.clone())]);
         w.add(vec![Record::Positive(b.clone())]);
         w.add(vec![Record::Negative(a.clone())]);
@@ -549,7 +567,7 @@ mod tests {
         let a = vec![1.into(), "a".into()];
         let b = vec![1.into(), "b".into()];
 
-        let (r, mut w) = new(2, &[0]);
+        let (mut r, mut w) = new(2, &[0]);
         w.add(vec![Record::Positive(a.clone())]);
         w.add(vec![Record::Positive(b.clone())]);
         w.swap();
@@ -572,7 +590,7 @@ mod tests {
         let b = vec![1.into(), "b".into()];
         let c = vec![1.into(), "c".into()];
 
-        let (r, mut w) = new(2, &[0]);
+        let (mut r, mut w) = new(2, &[0]);
         w.add(vec![
             Record::Positive(a.clone()),
             Record::Positive(b.clone()),
