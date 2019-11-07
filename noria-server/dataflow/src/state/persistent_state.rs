@@ -16,8 +16,8 @@ type IndexEpoch = u64;
 type IndexSeq = u64;
 
 enum DelPolicy {
-    erasable,
-    unerasable,   
+    Erasable,
+    Unerasable,   
 }
 
 // RocksDB key used for storing meta information (like indices).
