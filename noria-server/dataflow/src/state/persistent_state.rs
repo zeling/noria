@@ -4,6 +4,7 @@ use rocksdb::{self, PlainTableFactoryOptions, SliceTransform, WriteBatch};
 use serde;
 use tempfile::{tempdir, TempDir};
 
+use crate::DeletionPolicy;
 use common::SizeOf;
 use prelude::*;
 use state::{RecordResult, State};
@@ -30,6 +31,7 @@ const INDEX_BATCH_SIZE: usize = 100_000;
 struct PersistentMeta {
     indices: Vec<Vec<usize>>,
     epoch: IndexEpoch,
+    del_policy: DeletionPolicy,
 }
 
 #[derive(Clone)]
@@ -53,6 +55,7 @@ pub struct PersistentState {
     seq: IndexSeq,
     epoch: IndexEpoch,
     has_unique_index: bool,
+    del_policy: DeletionPolicy,
     // With DurabilityMode::DeleteOnExit,
     // RocksDB files are stored in a temporary directory.
     _directory: Option<TempDir>,
@@ -282,6 +285,7 @@ impl PersistentState {
             epoch: meta.epoch,
             db_opts: opts,
             db: Some(db),
+            del_policy: params.del_policy,
             _directory: directory,
         };
 
@@ -390,6 +394,7 @@ impl PersistentState {
         let meta = PersistentMeta {
             indices: columns,
             epoch: self.epoch,
+            del_policy: self.del_policy,
         };
 
         let data = bincode::serialize(&meta).unwrap();
@@ -484,6 +489,10 @@ impl PersistentState {
     }
 
     fn remove(&self, batch: &mut WriteBatch, r: &[DataType]) {
+        // FIXME: Maybe more complicated policies?
+        if self.del_policy == DeletionPolicy::Undeletable {
+            return;
+        }
         let db = self.db.as_ref().unwrap();
         let pk_index = &self.indices[0];
         let value_cf = db.cf_handle(&pk_index.column_family).unwrap();
@@ -1152,5 +1161,34 @@ mod tests {
 
         // 4) prefix(prefix(key)) == prefix(key)
         assert_eq!(prefix, prefix_transform(&prefix));
+    }
+
+    #[test]
+    fn perisitent_state_del_policy_test() {
+        {
+            let mut state = PersistentState::new(
+                String::from("del_policy_test"),
+                None,
+                &PersistenceParameters {
+                    del_policy: DeletionPolicy::Undeletable,
+                    ..PersistenceParameters::default()
+                },
+            );
+            let mut records: Records = vec![
+                (vec![1.into(), "A".into()], true),
+                (vec![1.into(), "A".into()], false),
+            ]
+            .into();
+
+            state.add_key(&[0], None);
+            state.process_records(&mut records[0].clone().into(), None);
+            state.process_records(&mut records[1].clone().into(), None);
+
+            // Make sure the first record cannot be deleted.
+            match state.lookup(&[0], &KeyType::Single(&records[0][0])) {
+                LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows.len(), 1),
+                _ => unreachable!(),
+            };
+        }
     }
 }

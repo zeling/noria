@@ -96,6 +96,18 @@ pub enum DurabilityMode {
     Permanent,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub enum DeletionPolicy {
+    Deletable,
+    Undeletable,
+}
+
+impl Default for DeletionPolicy {
+    fn default() -> DeletionPolicy {
+        DeletionPolicy::Deletable
+    }
+}
+
 /// Parameters to control the operation of GroupCommitQueue.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PersistenceParameters {
@@ -109,6 +121,8 @@ pub struct PersistenceParameters {
     pub log_dir: Option<PathBuf>,
     /// Number of background threads PersistentState can use (shared acrosss all worker threads).
     pub persistence_threads: i32,
+    /// Specify the deletion policy for GDPR.
+    pub del_policy: DeletionPolicy,
 }
 
 impl Default for PersistenceParameters {
@@ -119,6 +133,7 @@ impl Default for PersistenceParameters {
             log_prefix: String::from("soup"),
             log_dir: None,
             persistence_threads: 1,
+            del_policy: DeletionPolicy::default(),
         }
     }
 }
