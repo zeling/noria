@@ -230,11 +230,6 @@ impl<'a> Migration<'a> {
         self.mainline.graph()
     }
 
-    #[cfg(test)]
-    crate fn graph_mut(&mut self) -> &mut Graph {
-        self.mainline.graph_mut()
-    }
-
     fn ensure_reader_for(&mut self, n: NodeIndex, name: Option<String>) {
         use std::collections::hash_map::Entry;
         if let Entry::Vacant(e) = self.readers.entry(n) {
