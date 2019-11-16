@@ -1192,4 +1192,41 @@ mod tests {
             };
         }
     }
+    #[test]
+    fn persistent_state_deletable_policy_test() {
+        let mut state = PersistentState::new(
+            String::from("del_policy_test"),
+            None,
+            &PersistenceParameters {
+                del_policy: DeletionPolicy::Deletable,
+                ..PersistenceParameters::default()
+            },
+        );
+        let mut records: Records = vec![
+            (vec![1.into(), "A".into()], true),
+            (vec![1.into(), "A".into()], false),
+            (vec![2.into(), "B".into()], true),
+            (vec![3.into(), "C".into()], true),
+        ]
+        .into();
+
+        state.add_key(&[0], None);
+        state.process_records(&mut records[0].clone().into(), None);
+        state.process_records(&mut records[1].clone().into(), None);
+        state.process_records(&mut records[2].clone().into(), None);
+        state.process_records(&mut records[3].clone().into(), None);
+
+        // Make sure the first record is deleted.
+        match state.lookup(&[0], &KeyType::Single(&records[0][0])) {
+            LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows.len(), 0),
+            _ => unreachable!(),
+        };
+        // Then check that the rest exist:
+        for record in &records[1..3] {
+            match state.lookup(&[0], &KeyType::Single(&record[0])) {
+                LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows[0], **record),
+                _ => unreachable!(),
+            };
+        }
+    }
 }
