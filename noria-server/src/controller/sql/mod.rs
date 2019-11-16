@@ -176,15 +176,14 @@ impl SqlIncorporator {
             None => self.nodes_for_query(query, is_leaf, mig),
             Some(n) => self.nodes_for_named_query(query, n, is_leaf, mig),
         };
-        
         if let Ok(qfp) = &result {
-            for ni in &qfp.new_nodes {
-                let node = &mut mig.mainline.ingredients[*ni];
-                node.add_purpose(purpose);
-            }
-            for ni in &qfp.reused_nodes {
-                let node = &mut mig.mainline.ingredients[*ni];
-                node.add_purpose(purpose);
+            if let Some(purpose) = &copied {
+                for ni in &qfp.new_nodes {
+                    mig.mainline.ingredients[*ni].add_purpose(purpose);
+                }
+                for ni in &qfp.reused_nodes {
+                    mig.mainline.ingredients[*ni].add_purpose(purpose);
+                }
             }
         }
         result
