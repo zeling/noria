@@ -115,7 +115,7 @@ impl<'a> Migration<'a> {
         let ni = self
             .mainline
             .ingredients
-            .add_node(node::Node::new(name.to_string(), fields, b));
+            .add_node(node::Node::new(name.to_string(), fields, b));  // FIXME: add new node
         info!(self.log,
               "adding new base";
               "node" => ni.index(),
@@ -228,6 +228,11 @@ impl<'a> Migration<'a> {
     #[cfg(test)]
     pub(crate) fn graph(&self) -> &Graph {
         self.mainline.graph()
+    }
+
+    #[cfg(test)]
+    crate fn graph_mut(&mut self) -> &mut Graph {
+        self.mainline.graph_mut()
     }
 
     fn ensure_reader_for(&mut self, n: NodeIndex, name: Option<String>) {
