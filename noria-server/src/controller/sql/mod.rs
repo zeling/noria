@@ -132,31 +132,6 @@ impl SqlIncorporator {
         query.to_flow_parts(self, name, &mut mig)
     }
 
-    #[cfg(test)]
-    crate fn add_query_with_purpose(
-        &mut self,
-        query: &str,
-        name: Option<String>,
-        mut mig: &mut Migration,
-        purpose: &str, // FIXME: maybe a struct? persistent?
-    ) -> Result<QueryFlowParts, String> {
-        let result = query.to_flow_parts(self, name, &mut mig);
-        // Add descriptions to nodes.
-        if let Ok(qfp) = &result {
-            for ni in &qfp.new_nodes {
-                if let Some(node) = mig.graph_mut().node_weight_mut(*ni) {
-                    node.add_purpose(purpose);
-                }
-            }
-            for ni in &qfp.reused_nodes {
-                if let Some(node) = mig.graph_mut().node_weight_mut(*ni) {
-                    node.add_purpose(purpose);
-                }
-            }
-        }
-        result
-    } // FIXME: attach descriptions for this query & add to base tables
-
     /// Incorporates a single query into via the flow graph migration in `mig`. The `query`
     /// argument is a `SqlQuery` structure, and the `name` argument supplies an optional name for
     /// the query. If no `name` is specified, the table name is used in the case of CREATE TABLE
@@ -175,6 +150,32 @@ impl SqlIncorporator {
             None => self.nodes_for_query(query, is_leaf, mig),
             Some(n) => self.nodes_for_named_query(query, n, is_leaf, mig),
         }
+    }
+
+    pub(super) fn add_parsed_query_with_purpose(
+        &mut self,
+        query: SqlQuery,
+        name: Option<String>,
+        is_leaf: bool,
+        mig: &mut Migration,
+        purpose: &str
+    ) -> Result<QueryFlowParts, String> {
+        let result = match name {
+            None => self.nodes_for_query(query, is_leaf, mig),
+            Some(n) => self.nodes_for_named_query(query, n, is_leaf, mig),
+        };
+        
+        if let Ok(qfp) = &result {
+            for ni in &qfp.new_nodes {
+                let node = &mut mig.mainline.ingredients[*ni];
+                node.add_purpose(purpose);
+            }
+            for ni in &qfp.reused_nodes {
+                let node = &mut mig.mainline.ingredients[*ni];
+                node.add_purpose(purpose);
+            }
+        }
+        result
     }
 
     pub(super) fn get_base_schema(&self, name: &str) -> Option<CreateTableStatement> {
@@ -1166,37 +1167,6 @@ mod tests {
     }
 
     #[test]
-    fn it_incorporates_sql_with_purposes() {
-        // set up graph
-        let mut g = integration::start_simple("it_incorporates_sql_with_purposes");
-        g.migrate(|mig| {
-            let mut inc = SqlIncorporator::default();
-            // Establish a base write type
-            assert!(inc
-                .add_query("CREATE TABLE users (id int, name varchar(40));", None, mig)
-                .is_ok());
-            // Should have source and "users" base table node
-            assert_eq!(mig.graph().node_count(), 2);
-            assert_eq!(get_node(&inc, mig, "users").name(), "users");
-            assert_eq!(get_node(&inc, mig, "users").fields(), &["id", "name"]);
-            assert!(get_node(&inc, mig, "users").is_base());
-
-            // Try a simple query
-            let purpose = "Access User Name";
-            let res = inc.add_query_with_purpose(
-                "SELECT users.name FROM users WHERE users.id = 42;",
-                None,
-                mig,
-                purpose
-            );
-            assert!(res.is_ok());
-
-            let base_node = get_node(&inc, mig, "users");
-            assert_eq!(base_node.purposes(), "Used in following purposes:\nAccess User Name");
-        });
-    }
-
-    #[test]
     fn it_incorporates_aggregation() {
         // set up graph
         let mut g = integration::start_simple("it_incorporates_aggregation");
@@ -1469,6 +1439,41 @@ mod tests {
             assert_eq!(mig.graph().node_count(), ncount + 3);
             // only the join and projection nodes are returned in the vector of new nodes
             assert_eq!(qfp.new_nodes.len(), 2);
+        });
+    }
+
+    #[test]
+    fn it_incorporates_parsed_sql_with_purpose() {
+        use super::sql_parser;
+        // set up graph
+        let mut g = integration::start_simple("it_incorporates_parsed_sql_with_purposes");
+        g.migrate(|mig| {
+            let mut inc = SqlIncorporator::default();
+            // Establish a base write type
+            assert!(inc
+                .add_query("CREATE TABLE users (id int, name varchar(40));", None, mig)
+                .is_ok());
+            // Should have source and "users" base table node
+            assert_eq!(mig.graph().node_count(), 2);
+            assert_eq!(get_node(&inc, mig, "users").name(), "users");
+            assert_eq!(get_node(&inc, mig, "users").fields(), &["id", "name"]);
+            assert!(get_node(&inc, mig, "users").is_base());
+
+            // Try a simple query
+            let purpose = "Access User Name";
+            let res = inc.add_parsed_query_with_purpose(
+                sql_parser::parse_query(
+                    "SELECT users.name FROM users WHERE users.id = 42;"
+                ).unwrap(),
+                None,
+                true,
+                mig,
+                purpose
+            );
+            assert!(res.is_ok());
+
+            let base_node = get_node(&inc, mig, "users");
+            assert_eq!(base_node.purposes(), "Used in following purposes:\nAccess User Name");
         });
     }
 
