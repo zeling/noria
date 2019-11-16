@@ -146,10 +146,22 @@ impl SqlIncorporator {
         is_leaf: bool,
         mig: &mut Migration,
     ) -> Result<QueryFlowParts, String> {
-        match name {
+        let copied = name.clone();
+        let result = match name {
             None => self.nodes_for_query(query, is_leaf, mig),
             Some(n) => self.nodes_for_named_query(query, n, is_leaf, mig),
+        };
+        if let Ok(qfp) = &result {
+            if let Some(purpose) = &copied {
+                for ni in &qfp.new_nodes {
+                    mig.mainline.ingredients[*ni].add_purpose(purpose);
+                }
+                for ni in &qfp.reused_nodes {
+                    mig.mainline.ingredients[*ni].add_purpose(purpose);
+                }
+            }
         }
+        result
     }
 
     pub(super) fn add_parsed_query_with_purpose(
@@ -1500,20 +1512,21 @@ mod tests {
             assert!(get_node(&inc, mig, "users").is_base());
 
             // Try a simple query
-            let purpose = "Access User Name";
-            let res = inc.add_parsed_query_with_purpose(
-                sql_parser::parse_query(
-                    "SELECT users.name FROM users WHERE users.id = 42;"
-                ).unwrap(),
-                None,
+            let name = "Access User Name";
+            let res = inc.add_parsed_query(
+                sql_parser::parse_query("SELECT users.name FROM users WHERE users.id = 42;")
+                    .unwrap(),
+                Some(name.into()),
                 true,
                 mig,
-                purpose
             );
             assert!(res.is_ok());
 
             let base_node = get_node(&inc, mig, "users");
-            assert_eq!(base_node.purposes(), "Used in following purposes:\nAccess User Name");
+            assert_eq!(
+                base_node.purposes(),
+                "Used in following purposes:\nAccess User Name"
+            );
         });
     }
 

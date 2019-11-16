@@ -1222,7 +1222,7 @@ mod tests {
             _ => unreachable!(),
         };
         // Then check that the rest exist:
-        for record in &records[1..3] {
+        for record in &records[2..3] {
             match state.lookup(&[0], &KeyType::Single(&record[0])) {
                 LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows[0], **record),
                 _ => unreachable!(),
