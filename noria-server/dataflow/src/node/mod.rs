@@ -25,6 +25,7 @@ pub struct Node {
     name: String,
     index: Option<IndexPair>,
     domain: Option<domain::Index>,
+    purposes: HashSet<String>,
 
     fields: Vec<String>,
     parents: Vec<LocalNodeIndex>,
@@ -50,6 +51,7 @@ impl Node {
             name: name.to_string(),
             index: None,
             domain: None,
+            purposes: HashSet::new(), // maybe may processing and their description. structor will be better?
 
             fields: fields.into_iter().map(|s| s.to_string()).collect(),
             parents: Vec::new(),
@@ -173,6 +175,14 @@ impl Node {
 impl Node {
     pub fn name(&self) -> &str {
         &*self.name
+    }
+
+    pub fn purposes(&self) -> String {
+        let mut vec = Vec::new();
+        for desc in &self.purposes {
+            vec.push(String::from(desc));
+        }
+        format!("Used in following purposes:\n{}", vec.join("\n"))
     }
 
     pub fn fields(&self) -> &[String] {
@@ -390,6 +400,10 @@ impl Node {
 
     pub fn set_finalized_addr(&mut self, addr: IndexPair) {
         self.index = Some(addr);
+    }
+
+    pub fn add_purpose(&mut self, purpose: &str) {
+        self.purposes.insert(String::from(purpose));
     }
 }
 

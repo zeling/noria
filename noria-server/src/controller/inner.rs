@@ -717,6 +717,11 @@ impl ControllerInner {
         &self.ingredients
     }
 
+    #[cfg(test)]
+    crate fn graph_mut(&mut self) -> &mut Graph {
+        &mut self.ingredients
+    }
+
     /// Get a Vec of all known input nodes.
     ///
     /// Input nodes are here all nodes of type `Table`. The addresses returned by this function will
