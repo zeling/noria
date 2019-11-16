@@ -115,7 +115,7 @@ impl<'a> Migration<'a> {
         let ni = self
             .mainline
             .ingredients
-            .add_node(node::Node::new(name.to_string(), fields, b));
+            .add_node(node::Node::new(name.to_string(), fields, b)); // FIXME: add new node
         info!(self.log,
               "adding new base";
               "node" => ni.index(),

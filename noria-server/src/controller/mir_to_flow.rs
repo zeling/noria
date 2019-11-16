@@ -37,7 +37,7 @@ pub(super) fn mir_query_to_flow_parts(
         assert_eq!(in_edge_counts[&n.borrow().versioned_name()], 0);
         let flow_node = mir_node_to_flow_parts(&mut n.borrow_mut(), mig, table_mapping);
         match flow_node {
-            FlowNode::New(na) => new_nodes.push(na),
+            FlowNode::New(na) => new_nodes.push(na), // FIXME: get NodeIndex from FlowNode
             FlowNode::Existing(na) => reused_nodes.push(na),
         }
         for child in n.borrow().children.iter() {
@@ -71,6 +71,7 @@ pub(super) fn mir_query_to_flow_parts(
     }
 }
 
+// FIXME: create actual flow node from mir parsing.
 fn mir_node_to_flow_parts(
     mir_node: &mut MirNode,
     mig: &mut Migration,

@@ -14,7 +14,7 @@ pub struct QueryFlowParts {
     pub new_nodes: Vec<NodeIndex>,
     pub reused_nodes: Vec<NodeIndex>,
     pub query_leaf: NodeIndex,
-}
+} // FIXME: iterate all nodes to find related base nodes
 
 #[derive(Clone, Debug)]
 pub struct MirQuery {

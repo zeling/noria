@@ -146,10 +146,22 @@ impl SqlIncorporator {
         is_leaf: bool,
         mig: &mut Migration,
     ) -> Result<QueryFlowParts, String> {
-        match name {
+        let copied = name.clone();
+        let result = match name {
             None => self.nodes_for_query(query, is_leaf, mig),
             Some(n) => self.nodes_for_named_query(query, n, is_leaf, mig),
+        };
+        if let Ok(qfp) = &result {
+            if let Some(purpose) = &copied {
+                for ni in &qfp.new_nodes {
+                    mig.mainline.ingredients[*ni].add_purpose(purpose);
+                }
+                for ni in &qfp.reused_nodes {
+                    mig.mainline.ingredients[*ni].add_purpose(purpose);
+                }
+            }
         }
+        result
     }
 
     pub(super) fn get_base_schema(&self, name: &str) -> Option<CreateTableStatement> {
@@ -1413,6 +1425,42 @@ mod tests {
             assert_eq!(mig.graph().node_count(), ncount + 3);
             // only the join and projection nodes are returned in the vector of new nodes
             assert_eq!(qfp.new_nodes.len(), 2);
+        });
+    }
+
+    #[test]
+    fn it_incorporates_parsed_sql_with_purpose() {
+        use super::sql_parser;
+        // set up graph
+        let mut g = integration::start_simple("it_incorporates_parsed_sql_with_purposes");
+        g.migrate(|mig| {
+            let mut inc = SqlIncorporator::default();
+            // Establish a base write type
+            assert!(inc
+                .add_query("CREATE TABLE users (id int, name varchar(40));", None, mig)
+                .is_ok());
+            // Should have source and "users" base table node
+            assert_eq!(mig.graph().node_count(), 2);
+            assert_eq!(get_node(&inc, mig, "users").name(), "users");
+            assert_eq!(get_node(&inc, mig, "users").fields(), &["id", "name"]);
+            assert!(get_node(&inc, mig, "users").is_base());
+
+            // Try a simple query
+            let name = "Access User Name";
+            let res = inc.add_parsed_query(
+                sql_parser::parse_query("SELECT users.name FROM users WHERE users.id = 42;")
+                    .unwrap(),
+                Some(name.into()),
+                true,
+                mig,
+            );
+            assert!(res.is_ok());
+
+            let base_node = get_node(&inc, mig, "users");
+            assert_eq!(
+                base_node.purposes(),
+                "Used in following purposes:\nAccess User Name"
+            );
         });
     }
 
