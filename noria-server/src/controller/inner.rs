@@ -226,6 +226,8 @@ impl ControllerInner {
             }
             (Method::POST, "/inputs") => Ok(Ok(json::to_string(&self.inputs()).unwrap())),
             (Method::POST, "/outputs") => Ok(Ok(json::to_string(&self.outputs()).unwrap())),
+            // TODO: Figure out POST/GET?
+            (Method::POST, "/purporses") => Ok(Ok(json::to_string(&self.purposes()).unwrap())),
             (Method::GET, "/instances") => Ok(Ok(json::to_string(&self.get_instances()).unwrap())),
             (Method::GET, "/nodes") => {
                 // TODO(malte): this is a pretty yucky hack, but hyper doesn't provide easy access
@@ -723,6 +725,17 @@ impl ControllerInner {
                 let base = &self.ingredients[n];
                 assert!(base.is_base());
                 (base.name().to_owned(), n)
+            })
+            .collect()
+    }
+
+    fn purposes(&self) -> BTreeMap<String, String> {
+        self.ingredients
+            .neighbors_directed(self.source, petgraph::EdgeDirection::Outgoing)
+            .map(|n| {
+                let base = &self.ingredients[n];
+                assert!(base.is_base());
+                (base.name().to_owned(), base.purposes())
             })
             .collect()
     }
