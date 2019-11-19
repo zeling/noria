@@ -6,6 +6,7 @@ use petgraph::graph::NodeIndex;
 // TODO(malte): remove if possible
 use dataflow::ops::filter::FilterCondition;
 use dataflow::ops::join::JoinType;
+use dataflow::DeletionPolicy;
 
 use crate::controller::sql::query_graph::{OutputColumn, QueryGraph};
 use crate::controller::sql::query_signature::Signature;
@@ -414,7 +415,16 @@ impl SqlToMirConverter {
         match *query {
             SqlQuery::CreateTable(ref ctq) => {
                 assert_eq!(name, ctq.table.name);
-                let n = self.make_base_node(&name, &ctq.fields, ctq.keys.as_ref());
+                let n = self.make_base_node(
+                    &name,
+                    &ctq.fields,
+                    ctq.keys.as_ref(),
+                    if ctq.gdpr_undeletable {
+                        DeletionPolicy::Undeletable
+                    } else {
+                        DeletionPolicy::Deletable
+                    },
+                );
                 let node_id = (String::from(name), self.schema_version);
                 use std::collections::hash_map::Entry;
                 if let Entry::Vacant(e) = self.nodes.entry(node_id) {
@@ -537,6 +547,7 @@ impl SqlToMirConverter {
         name: &str,
         cols: &[ColumnSpecification],
         keys: Option<&Vec<TableKey>>,
+        del_policy: DeletionPolicy,
     ) -> MirNodeRef {
         // have we seen a base of this name before?
         if self.base_schemas.contains_key(name) {
@@ -694,6 +705,7 @@ impl SqlToMirConverter {
                             column_specs: cols.iter().map(|cs| (cs.clone(), None)).collect(),
                             keys: key_cols.iter().map(Column::from).collect(),
                             adapted_over: None,
+                            del_policy,
                         },
                         vec![],
                         vec![],
@@ -710,6 +722,7 @@ impl SqlToMirConverter {
                     column_specs: cols.iter().map(|cs| (cs.clone(), None)).collect(),
                     keys: vec![],
                     adapted_over: None,
+                    del_policy,
                 },
                 vec![],
                 vec![],

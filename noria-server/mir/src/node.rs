@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use column::Column;
 use common::DataType;
+use dataflow::DeletionPolicy;
 use dataflow::ops;
 use dataflow::ops::filter::FilterCondition;
 use dataflow::ops::grouped::aggregate::Aggregation as AggregationKind;
@@ -70,6 +71,7 @@ impl MirNode {
             MirNodeType::Base {
                 ref column_specs,
                 ref keys,
+                del_policy,
                 ..
             } => {
                 let new_column_specs: Vec<(ColumnSpecification, Option<usize>)> = column_specs
@@ -101,6 +103,7 @@ impl MirNode {
                         columns_added: added_cols.into_iter().cloned().collect(),
                         columns_removed: removed_cols.into_iter().cloned().collect(),
                     }),
+                    del_policy,
                 };
                 MirNode::new(
                     &over_node.name,
@@ -393,6 +396,7 @@ pub enum MirNodeType {
         column_specs: Vec<(ColumnSpecification, Option<usize>)>,
         keys: Vec<Column>,
         adapted_over: Option<BaseNodeAdaptation>,
+        del_policy: DeletionPolicy,
     },
     /// over column, group_by columns
     Extremum {
@@ -565,11 +569,13 @@ impl MirNodeType {
                 column_specs: ref our_column_specs,
                 keys: ref our_keys,
                 adapted_over: ref our_adapted_over,
+                del_policy: ref our_del_policy,
             } => {
                 match *other {
                     MirNodeType::Base {
                         ref column_specs,
                         ref keys,
+                        ref del_policy,
                         ..
                     } => {
                         // if we are instructed to adapt an earlier base node, we cannot reuse
@@ -585,7 +591,7 @@ impl MirNodeType {
                         // note that as long as we are not adapting a previous base node,
                         // we do *not* need `adapted_over` to *match*, since current reuse
                         // does not depend on how base node was created from an earlier one
-                        our_column_specs == column_specs && our_keys == keys
+                        our_column_specs == column_specs && our_keys == keys && our_del_policy == del_policy
                     }
                     _ => false,
                 }

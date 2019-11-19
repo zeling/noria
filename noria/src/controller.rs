@@ -293,6 +293,22 @@ impl<A: Authority + 'static> ControllerHandle<A> {
             })
     }
 
+    /// Enumerate all know base tables along with there purposes.
+    ///
+    /// Currently the query name that is assigned serves as the purpose.
+    pub fn purposes(
+        &mut self,
+    ) -> impl Future<Item = BTreeMap<String, String>, Error = failure::Error> + Send {
+        self.handle
+            .call(ControllerRequest::new("purposes", &()).unwrap())
+            .map_err(|e| format_err!("failed to fetch purpose: {:?}", e))
+            .and_then(|body: hyper::Chunk| {
+                serde_json::from_slice(&body)
+                    .context("couldn't parse purposes response")
+                    .map_err(failure::Error::from)
+            })
+    }
+
     /// Obtain a `View` that allows you to query the given external view.
     ///
     /// `Self::poll_ready` must have returned `Async::Ready` before you call this method.
