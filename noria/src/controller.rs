@@ -296,15 +296,20 @@ impl<A: Authority + 'static> ControllerHandle<A> {
     /// Currently the query name that is assigned serves as the purpose.
     pub fn purposes(
         &mut self,
-    ) -> impl Future<Item = BTreeMap<String, String>, Error = failure::Error> + Send {
-        self.handle
-            .call(ControllerRequest::new("purposes", &()).unwrap())
-            .map_err(|e| format_err!("failed to fetch purpose: {:?}", e))
-            .and_then(|body: hyper::Chunk| {
-                serde_json::from_slice(&body)
-                    .context("couldn't parse purposes response")
-                    .map_err(failure::Error::from)
-            })
+    ) -> impl Future<Output = Result<BTreeMap<String, String>, failure::Error>> {
+        let fut = self.handle
+            .call(ControllerRequest::new("purposes", &()).unwrap());
+
+        async move {
+            let body: hyper::Chunk = fut
+                .await
+                .map_err(failure::Context::new)
+                .context("failed to fetch purpose")?;
+
+            serde_json::from_slice(&body)
+                .context("couldn't parse purpose response")
+                .map_err(failure::Error::from)
+        }
     }
 
     /// Obtain a `View` that allows you to query the given external view.

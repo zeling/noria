@@ -14,7 +14,7 @@ evmap = { version = "7.1.2", features = ["indexed"] }
 fnv = "1.0.5"
 futures-util-preview = "=0.3.0-alpha.19"
 itertools = "0.8"
-nom-sql = "0.0.9"
+nom-sql = { git = "https://github.com/zeling/nom-sql" }
 indexmap = "1.1.0"
 rand = "0.7"
 regex = "1"

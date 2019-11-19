@@ -164,31 +164,6 @@ impl SqlIncorporator {
         result
     }
 
-    pub(super) fn add_parsed_query_with_purpose(
-        &mut self,
-        query: SqlQuery,
-        name: Option<String>,
-        is_leaf: bool,
-        mig: &mut Migration,
-        purpose: &str
-    ) -> Result<QueryFlowParts, String> {
-        let result = match name {
-            None => self.nodes_for_query(query, is_leaf, mig),
-            Some(n) => self.nodes_for_named_query(query, n, is_leaf, mig),
-        };
-        if let Ok(qfp) = &result {
-            if let Some(purpose) = &copied {
-                for ni in &qfp.new_nodes {
-                    mig.mainline.ingredients[*ni].add_purpose(purpose);
-                }
-                for ni in &qfp.reused_nodes {
-                    mig.mainline.ingredients[*ni].add_purpose(purpose);
-                }
-            }
-        }
-        result
-    }
-
     pub(super) fn get_base_schema(&self, name: &str) -> Option<CreateTableStatement> {
         self.base_schemas.get(name).cloned()
     }
