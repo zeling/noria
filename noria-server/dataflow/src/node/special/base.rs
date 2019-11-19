@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use vec_map::VecMap;
+use crate::DeletionPolicy;
 
 /// Base is used to represent the root nodes of the Noria data flow graph.
 ///
@@ -17,6 +18,7 @@ pub struct Base {
     defaults: Vec<DataType>,
     dropped: Vec<usize>,
     unmodified: bool,
+    pub del_policy: DeletionPolicy,
 }
 
 impl Base {
@@ -30,6 +32,12 @@ impl Base {
     /// Builder with a known primary key.
     pub fn with_key(mut self, primary_key: Vec<usize>) -> Base {
         self.primary_key = Some(primary_key);
+        self
+    }
+
+    /// Builder with a deletion policy
+    pub fn with_del_policy(mut self, del_policy: DeletionPolicy) -> Base {
+        self.del_policy = del_policy;
         self
     }
 
@@ -95,6 +103,7 @@ impl Clone for Base {
             defaults: self.defaults.clone(),
             dropped: self.dropped.clone(),
             unmodified: self.unmodified,
+            del_policy: self.del_policy.clone(),
         }
     }
 }
@@ -107,6 +116,7 @@ impl Default for Base {
             defaults: Vec::new(),
             dropped: Vec::new(),
             unmodified: true,
+            del_policy: DeletionPolicy::Deletable,
         }
     }
 }

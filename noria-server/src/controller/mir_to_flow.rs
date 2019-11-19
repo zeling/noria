@@ -9,6 +9,7 @@ use dataflow::ops::filter::FilterCondition;
 use dataflow::ops::join::{Join, JoinType};
 use dataflow::ops::latest::Latest;
 use dataflow::ops::project::{Project, ProjectExpression, ProjectExpressionBase};
+use dataflow::DeletionPolicy;
 use dataflow::{node, ops};
 use mir::node::{GroupedNodeType, MirNode, MirNodeType};
 use mir::query::{MirQuery, QueryFlowParts};
@@ -104,8 +105,11 @@ fn mir_node_to_flow_parts(
                     ref mut column_specs,
                     ref keys,
                     ref adapted_over,
+                    ref del_policy,
                 } => match *adapted_over {
-                    None => make_base_node(&name, column_specs.as_mut_slice(), keys, mig),
+                    None => {
+                        make_base_node(&name, column_specs.as_mut_slice(), keys, mig, *del_policy)
+                    }
                     Some(ref bna) => adapt_base_node(
                         bna.over.clone(),
                         mig,
@@ -378,6 +382,7 @@ fn make_base_node(
     column_specs: &mut [(ColumnSpecification, Option<usize>)],
     pkey_columns: &[Column],
     mig: &mut Migration,
+    del_policy: DeletionPolicy,
 ) -> FlowNode {
     // remember the absolute base column ID for potential later removal
     for (i, cs) in column_specs.iter_mut().enumerate() {
@@ -415,9 +420,11 @@ fn make_base_node(
                     .unwrap()
             })
             .collect();
-        node::special::Base::new(default_values).with_key(pkey_column_ids)
-    } else {
         node::special::Base::new(default_values)
+            .with_key(pkey_column_ids)
+            .with_del_policy(del_policy)
+    } else {
+        node::special::Base::new(default_values).with_del_policy(del_policy)
     };
 
     FlowNode::New(mig.add_base(name, column_names.as_slice(), base))

@@ -1230,7 +1230,12 @@ impl Domain {
                                             self.shard.unwrap_or(0),
                                         );
 
-                                        box PersistentState::new(base_name, base.key(), &params)
+                                        let params_override = PersistenceParameters {
+                                            del_policy: base.del_policy,
+                                            ..params.clone()
+                                        };
+
+                                        box PersistentState::new(base_name, base.key(), &params_override)
                                     }
                                     _ => box MemoryState::default(),
                                 }
