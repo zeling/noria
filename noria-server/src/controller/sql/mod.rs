@@ -1177,12 +1177,15 @@ mod tests {
                 "SELECT users.name FROM users WHERE users.id = 42;",
                 None,
                 mig,
-                purpose
+                purpose,
             );
             assert!(res.is_ok());
 
             let base_node = get_node(&inc, mig, "users");
-            assert_eq!(base_node.purposes(), "Used in following purposes:\nAccess User Name");
+            assert_eq!(
+                base_node.purposes(),
+                "Used in following purposes:\nAccess User Name"
+            );
         });
     }
 

@@ -297,7 +297,8 @@ impl<A: Authority + 'static> ControllerHandle<A> {
     pub fn purposes(
         &mut self,
     ) -> impl Future<Output = Result<BTreeMap<String, String>, failure::Error>> {
-        let fut = self.handle
+        let fut = self
+            .handle
             .call(ControllerRequest::new("purposes", &()).unwrap());
 
         async move {
