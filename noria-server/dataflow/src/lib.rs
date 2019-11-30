@@ -99,6 +99,7 @@ pub struct PersistenceParameters {
     pub persistence_threads: i32,
     /// Specify the deletion policy for GDPR.
     pub del_policy: DeletionPolicy,
+    pub user_column: Option<usize>,
 }
 
 impl Default for PersistenceParameters {
@@ -110,6 +111,7 @@ impl Default for PersistenceParameters {
             log_dir: None,
             persistence_threads: 1,
             del_policy: DeletionPolicy::default(),
+            user_column: None,
         }
     }
 }

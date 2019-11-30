@@ -32,6 +32,7 @@ struct PersistentMeta {
     indices: Vec<Vec<usize>>,
     epoch: IndexEpoch,
     del_policy: DeletionPolicy,
+    user_column: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -56,6 +57,7 @@ pub struct PersistentState {
     epoch: IndexEpoch,
     has_unique_index: bool,
     del_policy: DeletionPolicy,
+    user_column: Option<usize>,
     // With DurabilityMode::DeleteOnExit,
     // RocksDB files are stored in a temporary directory.
     _directory: Option<TempDir>,
@@ -286,6 +288,7 @@ impl PersistentState {
             db_opts: opts,
             db: Some(db),
             del_policy: params.del_policy,
+            user_column: params.user_column,
             _directory: directory,
         };
 
@@ -306,6 +309,11 @@ impl PersistentState {
 
             state.indices.push(persistent_index);
             state.persist_meta();
+        }
+
+        // Persist the user index.
+        if let Some(user_column) = params.user_column {
+            state.add_key(&[user_column], None);
         }
 
         state
@@ -395,6 +403,7 @@ impl PersistentState {
             indices: columns,
             epoch: self.epoch,
             del_policy: self.del_policy,
+            user_column: self.user_column,
         };
 
         let data = bincode::serialize(&meta).unwrap();
@@ -1225,6 +1234,38 @@ mod tests {
         for record in &records[2..3] {
             match state.lookup(&[0], &KeyType::Single(&record[0])) {
                 LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows[0], **record),
+                _ => unreachable!(),
+            };
+        }
+    }
+
+    #[test]
+    fn persistent_state_user_column_test() {
+        {
+            let mut state = PersistentState::new(
+                String::from("user_column_test"),
+                None,
+                &PersistenceParameters {
+                    user_column: Some(0),
+                    ..PersistenceParameters::default()
+                },
+            );
+            let mut records: Records = vec![
+                (vec![1.into(), "Alice".into()], true),
+                (vec![2.into(), "Bob".into()], true),
+            ]
+            .into();
+
+            state.process_records(&mut records[0].clone().into(), None);
+            state.process_records(&mut records[1].clone().into(), None);
+
+            // Make sure we can index on the user column.
+            match state.lookup(&[0], &KeyType::Single(&records[0][0])) {
+                LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows.len(), 1),
+                _ => unreachable!(),
+            };
+            match state.lookup(&[0], &KeyType::Single(&records[1][0])) {
+                LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows.len(), 1),
                 _ => unreachable!(),
             };
         }

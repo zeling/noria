@@ -1228,6 +1228,7 @@ impl Domain {
 
                                         let params_override = PersistenceParameters {
                                             del_policy: base.del_policy,
+                                            user_column: base.user_column,
                                             ..params.clone()
                                         };
 
