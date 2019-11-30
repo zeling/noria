@@ -62,6 +62,7 @@ mod tests {
                 ColumnSpecification::new(Column::from("t.val"), SqlType::Text),
             ],
             keys: None,
+            gdpr_undeletable: false,
         };
 
         let res = SqlQuery::CreateTable(q).coalesce_key_definitions();

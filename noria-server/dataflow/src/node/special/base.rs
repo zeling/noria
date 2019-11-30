@@ -19,6 +19,7 @@ pub struct Base {
     dropped: Vec<usize>,
     unmodified: bool,
     pub del_policy: DeletionPolicy,
+    pub user_column: Option<usize>,
 }
 
 impl Base {
@@ -38,6 +39,11 @@ impl Base {
     /// Builder with a deletion policy
     pub fn with_del_policy(mut self, del_policy: DeletionPolicy) -> Base {
         self.del_policy = del_policy;
+        self
+    }
+
+    pub fn with_user_column(mut self, user_column: usize) -> Base {
+        self.user_column = Some(user_column);
         self
     }
 
@@ -104,6 +110,7 @@ impl Clone for Base {
             dropped: self.dropped.clone(),
             unmodified: self.unmodified,
             del_policy: self.del_policy.clone(),
+            user_column: self.user_column,
         }
     }
 }
@@ -117,6 +124,7 @@ impl Default for Base {
             dropped: Vec::new(),
             unmodified: true,
             del_policy: DeletionPolicy::Deletable,
+            user_column: None, 
         }
     }
 }
