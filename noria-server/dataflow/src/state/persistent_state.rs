@@ -32,12 +32,14 @@ struct PersistentMeta {
     indices: Vec<Vec<usize>>,
     epoch: IndexEpoch,
     del_policy: DeletionPolicy,
+    // user_column: usize,
 }
 
 #[derive(Clone)]
 struct PersistentIndex {
     column_family: String,
     columns: Vec<usize>,
+    // user_column: usize, //todo
 }
 
 /// PersistentState stores data in RocksDB.
@@ -56,6 +58,8 @@ pub struct PersistentState {
     epoch: IndexEpoch,
     has_unique_index: bool,
     del_policy: DeletionPolicy,
+    user_column: i32, //add user_column, if -1 meaning there is no user_column for this table, can ignore this table when collecting/removing user data
+    
     // With DurabilityMode::DeleteOnExit,
     // RocksDB files are stored in a temporary directory.
     _directory: Option<TempDir>,
@@ -286,6 +290,7 @@ impl PersistentState {
             db_opts: opts,
             db: Some(db),
             del_policy: params.del_policy,
+            user_column: params.user_column,
             _directory: directory,
         };
 
@@ -537,6 +542,54 @@ impl PersistentState {
             do_remove(&key[..]);
         };
     }
+    //add two new methods for user sharding below: 
+    fn specify_user_column(&mut self, user_column: i32){
+        self.user_column = user_column;
+        //check whether there is index corresponding to the user_column, if not, add it. 
+        let existing = self
+            .indices
+            .iter()
+            .any(|index| &index.columns[..] == [user_column]);
+        if existing == false {
+            self.add_key([user_column], None); // fn add_key(&mut self, columns: &[usize], partial: Option<Vec<Tag>>) {
+        }   
+    }
+    
+    fn lookup_user_data(&self, key: &KeyType) -> LookupResult {
+        if self.user_column < 0{
+            return LookupResult::Missing;
+        }
+        let db = self.db.as_ref().unwrap();
+    
+        let index_id = self
+            .indices
+            .iter()
+            .position(|index| &index.columns[..] == [self.user_column as usize])
+            .expect("lookup on user column");
+        let cf = db.cf_handle(&self.indices[index_id].column_family).unwrap();
+        let prefix = Self::serialize_prefix(&key);
+        let data = if index_id == 0 && self.has_unique_index {
+            // This is a primary key, so we know there's only one row to retrieve
+            // (no need to use prefix_iterator).
+            let raw_row = db.get_cf(cf, &prefix).unwrap();
+            if let Some(raw) = raw_row {
+                let row = bincode::deserialize(&*raw).unwrap();
+                vec![row]
+            } else {
+                vec![]
+            }
+        } else {
+            // This could correspond to more than one value, so we'll use a prefix_iterator:
+            db.prefix_iterator_cf(cf, &prefix)
+                .unwrap()
+                .map(|(_key, value)| bincode::deserialize(&*value).unwrap())
+                .collect()
+        };
+    
+        LookupResult::Some(RecordResult::Owned(data))
+    
+    }
+    
 }
 
 // SliceTransforms are used to create prefixes of all inserted keys, which can then be used for
@@ -601,6 +654,14 @@ impl SizeOf for PersistentState {
         db.property_int_value("rocksdb.estimate-live-data-size")
             .unwrap()
             .unwrap()
+    }
+}
+
+impl PersistentState {
+    /// Returns the index in `self.state` of the index keyed on `cols`, or None if no such index
+    /// exists.
+    fn state_for(&self, cols: &[usize]) -> Option<usize> {
+        self.state.iter().position(|s| s.key() == cols)
     }
 }
 
@@ -905,6 +966,11 @@ mod tests {
             _ => unreachable!(),
         }
     }
+
+    
+
+    
+    
 
     #[test]
     fn persistent_state_remove() {
@@ -1228,4 +1294,101 @@ mod tests {
             };
         }
     }
+
+    #[test]
+    fn persistent_state_specify_user_column_test(){
+        let mut state = setup_persistent("persistent_state_remove_user_data");
+        state.specify_user_column(1.into());
+
+        let first: Vec<DataType> = vec![10.into(), "AliceId".into()];
+        let second: Vec<DataType> = vec![20.into(), "AliceId".into()];
+        //no need to add_key as specify_user_column should already add the key if the key has not already existed
+        state.process_records(
+            &mut vec![first.clone(), second.clone()].into(),
+            None,
+        );
+        match state.lookup_user_data(&KeyType::Single(&"AliceId".into())) {
+            LookupResult::Some(RecordResult::Owned(rows)) => {
+                assert_eq!(rows.len(), 2);
+            }
+            _ => unreachable!(),
+        }
+        state.specify_user_column(0.into()); //now specify the user_column to a different one
+
+        match state.lookup_user_data(&KeyType::Single(&"AliceId".into())) {
+            LookupResult::Some(RecordResult::Owned(rows)) => {
+                assert_eq!(rows.len(), 0);
+            }
+            _ => unreachable!(),
+        }
+        match state.lookup_user_data(&KeyType::Single(&10.into())) {
+            LookupResult::Some(RecordResult::Owned(rows)) => {
+                assert_eq!(rows.len(), 1);
+            }
+            _ => unreachable!(),
+        }    
+    }
+
+    #[test]
+    fn persistent_state_access_user_data_test(){
+        let mut state = setup_persistent("persistent_state_remove_user_data");
+        let first: Vec<DataType> = vec![10.into(), "AliceId".into()];
+        let second: Vec<DataType> = vec![20.into(), "AliceId".into()];
+        let third: Vec<DataType> = vec![30.into(), "BobId".into()];
+
+        state.add_key(&[0], None); //this key corresponds to a non-user column
+        state.add_key(&[1], None); //this key corresponds to the user_column we will specify later 
+        state.process_records(
+            &mut vec![first.clone(), second.clone(), third.clone()].into(),
+            None,
+        );
+
+        //set user column to be the first column (zero-based)
+        state.specify_user_column(1.into());
+        match state.lookup_user_data(&KeyType::Single(&"AliceId".into())) {
+            LookupResult::Some(RecordResult::Owned(rows)) => {
+                assert_eq!(rows.len(), 2);
+            }
+            _ => unreachable!(),
+        }
+        match state.lookup_user_data(&KeyType::Single(&"BobId".into())) {
+            LookupResult::Some(RecordResult::Owned(rows)) => {
+                assert_eq!(rows.len(), 1);
+            }
+            _ => unreachable!(),
+        }
+        //now user column is reset from column 1 to column 0 (zero-based)
+        //expect to see different results when call lookup_user_data
+        state.specify_user_column(0.into());
+        match state.lookup_user_data(&KeyType::Single(&"AliceId".into())) {
+            LookupResult::Some(RecordResult::Owned(rows)) => {
+                assert_eq!(rows.len(), 0); //as "AliceId" does not correspond to user_column, we should see no result here 
+            }
+            _ => unreachable!(),
+        }
+        match state.lookup_user_data(&KeyType::Single(&10.into())) {
+            LookupResult::Some(RecordResult::Owned(rows)) => {
+                assert_eq!(rows.len(), 1);
+            }
+            _ => unreachable!(),
+        }  
+        //specify the user_column to be -1 meaning to unspecify/un-set the user_column -- as a result, lookup_user_data will find nothing. 
+        state.specify_user_column(-1.into());
+        match state.lookup_user_data(&KeyType::Single(&10.into())) {
+            LookupResult::Some(RecordResult::Owned(rows)) => {
+                assert_eq!(rows.len(), 0);
+            }
+            _ => unreachable!(),
+        }  
+        match state.lookup_user_data(&KeyType::Single(&"AliceId".into())) {
+            LookupResult::Some(RecordResult::Owned(rows)) => {
+                assert_eq!(rows.len(), 0);
+            }
+            _ => unreachable!(),
+        }
+
+    }
+
+    
+
 }

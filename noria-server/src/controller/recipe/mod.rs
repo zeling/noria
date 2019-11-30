@@ -23,8 +23,8 @@ type QueryID = u64;
 #[derive(Clone, Debug)]
 // crate viz for tests
 crate struct Recipe {
-    /// SQL queries represented in the recipe. Value tuple is (name, query, public).
-    expressions: HashMap<QueryID, (Option<String>, SqlQuery, bool)>,
+    /// SQL queries represented in the recipe. Value tuple is (name, query, public, purpose).
+    expressions: HashMap<QueryID, (Option<String>, SqlQuery, bool, Option<String>)>, 
     /// Addition order for the recipe expressions
     expression_order: Vec<QueryID>,
     /// Named read/write expression aliases, mapping to queries in `expressions`.
