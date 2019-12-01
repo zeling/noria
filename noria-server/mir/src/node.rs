@@ -72,6 +72,7 @@ impl MirNode {
                 ref column_specs,
                 ref keys,
                 del_policy,
+                user_column,
                 ..
             } => {
                 let new_column_specs: Vec<(ColumnSpecification, Option<usize>)> = column_specs
@@ -104,6 +105,7 @@ impl MirNode {
                         columns_removed: removed_cols.into_iter().cloned().collect(),
                     }),
                     del_policy,
+                    user_column,
                 };
                 MirNode::new(
                     &over_node.name,
@@ -397,6 +399,7 @@ pub enum MirNodeType {
         keys: Vec<Column>,
         adapted_over: Option<BaseNodeAdaptation>,
         del_policy: DeletionPolicy,
+        user_column: Option<usize>,
     },
     /// over column, group_by columns
     Extremum {
@@ -570,12 +573,14 @@ impl MirNodeType {
                 keys: ref our_keys,
                 adapted_over: ref our_adapted_over,
                 del_policy: ref our_del_policy,
+                user_column: ref our_user_column,
             } => {
                 match *other {
                     MirNodeType::Base {
                         ref column_specs,
                         ref keys,
                         ref del_policy,
+                        ref user_column,
                         ..
                     } => {
                         // if we are instructed to adapt an earlier base node, we cannot reuse
@@ -591,9 +596,13 @@ impl MirNodeType {
                         // note that as long as we are not adapting a previous base node,
                         // we do *not* need `adapted_over` to *match*, since current reuse
                         // does not depend on how base node was created from an earlier one
+<<<<<<< HEAD
                         our_column_specs == column_specs
                             && our_keys == keys
                             && our_del_policy == del_policy
+=======
+                        our_column_specs == column_specs && our_keys == keys && our_del_policy == del_policy && our_user_column == user_column
+>>>>>>> 26dd801f... modified the sqlquery to incorporate user column
                     }
                     _ => false,
                 }
