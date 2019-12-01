@@ -415,6 +415,7 @@ impl SqlToMirConverter {
         match *query {
             SqlQuery::CreateTable(ref ctq) => {
                 assert_eq!(name, ctq.table.name);
+                let gdpr_user_column = ctq.gdpr_user_column.clone();
                 let n = self.make_base_node(
                     &name,
                     &ctq.fields,
@@ -424,6 +425,9 @@ impl SqlToMirConverter {
                     } else {
                         DeletionPolicy::Deletable
                     },
+                    gdpr_user_column.and_then(|colname| {
+                        ctq.fields.iter().position(|f| f.column.name == colname)
+                    }),
                 );
                 let node_id = (String::from(name), self.schema_version);
                 use std::collections::hash_map::Entry;
@@ -548,6 +552,7 @@ impl SqlToMirConverter {
         cols: &[ColumnSpecification],
         keys: Option<&Vec<TableKey>>,
         del_policy: DeletionPolicy,
+        user_column: Option<usize>,
     ) -> MirNodeRef {
         // have we seen a base of this name before?
         if self.base_schemas.contains_key(name) {
@@ -706,6 +711,7 @@ impl SqlToMirConverter {
                             keys: key_cols.iter().map(Column::from).collect(),
                             adapted_over: None,
                             del_policy,
+                            user_column,
                         },
                         vec![],
                         vec![],
@@ -723,6 +729,7 @@ impl SqlToMirConverter {
                     keys: vec![],
                     adapted_over: None,
                     del_policy,
+                    user_column,
                 },
                 vec![],
                 vec![],

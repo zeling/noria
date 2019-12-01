@@ -106,10 +106,16 @@ fn mir_node_to_flow_parts(
                     ref keys,
                     ref adapted_over,
                     ref del_policy,
+                    ref user_column,
                 } => match *adapted_over {
-                    None => {
-                        make_base_node(&name, column_specs.as_mut_slice(), keys, mig, *del_policy)
-                    }
+                    None => make_base_node(
+                        &name,
+                        column_specs.as_mut_slice(),
+                        keys,
+                        mig,
+                        *del_policy,
+                        *user_column,
+                    ),
                     Some(ref bna) => adapt_base_node(
                         bna.over.clone(),
                         mig,
@@ -383,6 +389,7 @@ fn make_base_node(
     pkey_columns: &[Column],
     mig: &mut Migration,
     del_policy: DeletionPolicy,
+    user_column: Option<usize>,
 ) -> FlowNode {
     // remember the absolute base column ID for potential later removal
     for (i, cs) in column_specs.iter_mut().enumerate() {
@@ -423,8 +430,11 @@ fn make_base_node(
         node::special::Base::new(default_values)
             .with_key(pkey_column_ids)
             .with_del_policy(del_policy)
+            .with_user_column(user_column)
     } else {
-        node::special::Base::new(default_values).with_del_policy(del_policy)
+        node::special::Base::new(default_values)
+            .with_del_policy(del_policy)
+            .with_user_column(user_column)
     };
 
     FlowNode::New(mig.add_base(name, column_names.as_slice(), base))
