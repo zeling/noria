@@ -125,7 +125,7 @@ impl Default for Base {
             dropped: Vec::new(),
             unmodified: true,
             del_policy: DeletionPolicy::Deletable,
-            user_column: None, 
+            user_column: None,
         }
     }
 }

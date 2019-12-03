@@ -546,6 +546,23 @@ impl PersistentState {
             do_remove(&key[..]);
         };
     }
+
+    fn export_user_rows(&self, user_key: DataType) -> Vec<Vec<u8>> {
+        let mut rows = Vec::new();
+        let db = self.db.as_ref().unwrap();
+        if let Some(ucol) = self.user_column {
+            let prefix = Self::serialize_prefix(&KeyType::Single(&user_key));
+            if let Some(index) = self.indices.iter().find(|idx| &idx.columns == &[ucol]) {
+                let value_cf = db.cf_handle(&index.column_family).unwrap();
+                db.prefix_iterator_cf(value_cf, prefix)
+                    .unwrap()
+                    .for_each(|(_, v)| {
+                        rows.push(v.into_vec());
+                    });
+            }
+        }
+        rows
+    }
 }
 
 // SliceTransforms are used to create prefixes of all inserted keys, which can then be used for
@@ -1269,5 +1286,36 @@ mod tests {
                 _ => unreachable!(),
             };
         }
+    }
+
+    #[test]
+    fn test_export_user_rows() {
+        let mut state = PersistentState::new(
+            String::from("user_column_test"),
+            None,
+            &PersistenceParameters {
+                user_column: Some(0),
+                ..PersistenceParameters::default()
+            },
+        );
+        let mut records: Records = vec![
+            (vec!["Alice".into(), 1.into()], true),
+            (vec!["Bob".into(), 2.into()], true),
+            (vec!["Bob".into(), 3.into()], true),
+        ]
+        .into();
+
+        state.process_records(&mut records, None);
+        assert_eq!(
+            state.export_user_rows("Alice".into()),
+            vec![bincode::serialize(&records[0][..]).unwrap()]
+        );
+        assert_eq!(
+            state.export_user_rows("Bob".into()),
+            vec![
+                bincode::serialize(&records[1][..]).unwrap(),
+                bincode::serialize(&records[2][..]).unwrap()
+            ]
+        );
     }
 }
