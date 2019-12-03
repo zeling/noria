@@ -1236,7 +1236,11 @@ impl Domain {
                                             ..params.clone()
                                         };
 
-                                        box PersistentState::new(base_name, base.key(), &params_override)
+                                        box PersistentState::new(
+                                            base_name,
+                                            base.key(),
+                                            &params_override,
+                                        )
                                     }
                                     _ => box MemoryState::default(),
                                 }

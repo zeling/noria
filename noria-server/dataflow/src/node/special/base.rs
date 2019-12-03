@@ -1,10 +1,10 @@
+use crate::DeletionPolicy;
 use noria::{Modification, Operation, TableOperation};
 use prelude::*;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use vec_map::VecMap;
-use crate::DeletionPolicy;
 
 /// Base is used to represent the root nodes of the Noria data flow graph.
 ///
@@ -125,7 +125,7 @@ impl Default for Base {
             dropped: Vec::new(),
             unmodified: true,
             del_policy: DeletionPolicy::Deletable,
-            user_column: None, 
+            user_column: None,
         }
     }
 }
