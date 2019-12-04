@@ -313,6 +313,30 @@ impl<A: Authority + 'static> ControllerHandle<A> {
         }
     }
 
+    /// Export user shard from the dataflow.
+    ///
+    /// `Self::poll_ready` must have returned `Async::Ready` before you call this method.
+    pub fn export_user_shard(
+        &mut self,
+        user_id: String,
+    ) -> impl Future<Output = Result<HashMap<String, Vec<Vec<u8>>>, failure::Error>> {
+        self.rpc("export_user_shard", user_id, "failed to export user shard")
+    }
+
+    /// Import user shard to the dataflow.
+    ///
+    /// `Self::poll_ready` must have returned `Async::Ready` before you call this method.
+    pub fn import_user_shard(
+        &mut self,
+        user_shard: HashMap<String, Vec<Vec<u8>>>,
+    ) -> impl Future<Output = Result<(), failure::Error>> {
+        self.rpc(
+            "import_user_shard",
+            user_shard,
+            "failed to import user shard",
+        )
+    }
+
     /// Obtain a `View` that allows you to query the given external view.
     ///
     /// `Self::poll_ready` must have returned `Async::Ready` before you call this method.

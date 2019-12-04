@@ -1365,6 +1365,38 @@ impl Domain {
                     Packet::Spin => {
                         // spinning as instructed
                     }
+                    Packet::ExportUserRows { user_id, nodes } => {
+                        let mut user_rows: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+                        for ni in &nodes {
+                            if self.nodes.contains_key(*ni) {
+                                let n = self.nodes[*ni].borrow();
+                                assert!(n.is_base());
+
+                                let rows = self
+                                    .state
+                                    .get(*ni)
+                                    .unwrap()
+                                    .export_user_rows(String::from(&user_id).into());
+                                if rows.len() != 0 {
+                                    user_rows.insert(String::from(n.name()), rows);
+                                }
+                            }
+                        }
+
+                        self.control_reply_tx
+                            .send(ControlReplyPacket::UserRows(user_rows))
+                            .unwrap();
+                    }
+                    Packet::ImportUserRows { user_rows } => {
+                        for (ni, rows) in &user_rows {
+                            if self.nodes.contains_key(*ni) {
+                                let n = self.nodes[*ni].borrow();
+                                assert!(n.is_base());
+
+                                self.state.get_mut(*ni).unwrap().import_user_rows(rows);
+                            }
+                        }
+                    }
                     _ => unreachable!(),
                 }
             }

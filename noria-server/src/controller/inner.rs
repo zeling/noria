@@ -112,6 +112,24 @@ impl DomainReplies {
         }
         stats
     }
+
+    async fn wait_for_user_rows(&mut self, d: &DomainHandle) -> HashMap<String, Vec<Vec<u8>>> {
+        let mut all_user_rows: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+        // Read n replies, since it is sent to all shards.
+        for r in self.read_n_domain_replies(d.shards()).await {
+            match r {
+                ControlReplyPacket::UserRows(user_rows) => {
+                    for (base_name, rows) in &user_rows {
+                        all_user_rows
+                            .entry(base_name.to_string())
+                            .or_insert(rows.to_vec());
+                    }
+                }
+                r => unreachable!("got unexpected non-user_data control reply: {:?}", r),
+            }
+        }
+        all_user_rows
+    }
 }
 
 pub(super) fn graphviz(
@@ -297,6 +315,18 @@ impl ControllerInner {
                 .map_err(|_| StatusCode::BAD_REQUEST)
                 .map(|args| {
                     self.remove_nodes(vec![args].as_slice())
+                        .map(|r| json::to_string(&r).unwrap())
+                }),
+            (Method::POST, "/export_user_shard") => json::from_slice(&body)
+                .map_err(|_| StatusCode::BAD_REQUEST)
+                .map(|args| {
+                    futures_executor::block_on(self.export_user_shard(args))
+                        .map(|r| json::to_string(&r).unwrap())
+                }),
+            (Method::POST, "/import_user_shard") => json::from_slice(&body)
+                .map_err(|_| StatusCode::BAD_REQUEST)
+                .map(|args| {
+                    self.import_user_shard(args)
                         .map(|r| json::to_string(&r).unwrap())
                 }),
             _ => Err(StatusCode::NOT_FOUND),
@@ -1301,6 +1331,110 @@ impl ControllerInner {
                     }
                 },
             }
+        }
+
+        Ok(())
+    }
+
+    async fn export_user_shard(
+        &mut self,
+        user_id: String,
+    ) -> Result<HashMap<String, Vec<Vec<u8>>>, String> {
+        // Find all domains that have base nodes to get exported.
+        let mut domain_exported: HashMap<DomainIndex, Vec<LocalNodeIndex>> = HashMap::default();
+        let inputs = self.inputs();
+        for (node_name, ni) in &inputs {
+            domain_exported
+                .entry(self.ingredients[*ni].domain())
+                .or_insert_with(Vec::new)
+                .push(self.ingredients[*ni].local_addr());
+        }
+
+        let replies = &mut self.replies;
+        let mut user_shard: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+        for (domain, nodes) in domain_exported {
+            trace!(
+                self.log,
+                "Exporting user data from domain {}",
+                domain.index()
+            );
+            let domain_handle = self.domains.get_mut(&domain).unwrap();
+            match domain_handle.send_to_healthy(
+                Box::new(Packet::ExportUserRows {
+                    user_id: String::from(&user_id),
+                    nodes: nodes.to_vec(),
+                }),
+                &self.workers,
+            ) {
+                Ok(_) => (),
+                Err(e) => match e {
+                    SendError::IoError(ref ioe) => {
+                        if ioe.kind() == io::ErrorKind::BrokenPipe
+                            && ioe.get_ref().unwrap().description() == "worker failed"
+                        {
+                            // message would have gone to a failed worker, so ignore error
+                        } else {
+                            panic!("failed to export user data: {:?}", e);
+                        }
+                    }
+                    _ => {
+                        panic!("failed to export user data: {:?}", e);
+                    }
+                },
+            };
+            replies
+                .wait_for_user_rows(&domain_handle)
+                .await
+                .into_iter()
+                .for_each(|(base_name, user_rows)| {
+                    user_shard.entry(base_name).or_insert(user_rows);
+                });
+        }
+
+        Ok(user_shard)
+    }
+
+    fn import_user_shard(
+        &mut self,
+        user_shard: HashMap<String, Vec<Vec<u8>>>,
+    ) -> Result<(), String> {
+        // Find all domains that have base nodes to get user shard imported.
+        let mut domain_imported: HashMap<DomainIndex, HashMap<LocalNodeIndex, Vec<Vec<u8>>>> =
+            HashMap::default();
+        let inputs = self.inputs();
+        for (node_name, ni) in &inputs {
+            if user_shard.contains_key(node_name) {
+                let user_rows = user_shard.get(node_name).unwrap().clone();
+                domain_imported
+                    .entry(self.ingredients[*ni].domain())
+                    .or_insert_with(HashMap::new)
+                    .insert(self.ingredients[*ni].local_addr(), user_rows.to_vec());
+            }
+        }
+
+        for (domain, user_rows) in domain_imported {
+            trace!(self.log, "Importing user data to domain {}", domain.index());
+            // Extract all related user rows - partial user shard.
+            let domain_handle = self.domains.get_mut(&domain).unwrap();
+            match domain_handle
+                .send_to_healthy(Box::new(Packet::ImportUserRows { user_rows }), &self.workers)
+            {
+                Ok(_) => (),
+                Err(e) => match e {
+                    SendError::IoError(ref ioe) => {
+                        if ioe.kind() == io::ErrorKind::BrokenPipe
+                            && ioe.get_ref().unwrap().description() == "worker failed"
+                        {
+                            // message would have gone to a failed worker, so ignore error
+                        } else {
+                            panic!("failed to export user data: {:?}", e);
+                        }
+                    }
+                    _ => {
+                        panic!("failed to export user data: {:?}", e);
+                    }
+                },
+            };
         }
 
         Ok(())

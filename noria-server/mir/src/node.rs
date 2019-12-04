@@ -596,13 +596,9 @@ impl MirNodeType {
                         // note that as long as we are not adapting a previous base node,
                         // we do *not* need `adapted_over` to *match*, since current reuse
                         // does not depend on how base node was created from an earlier one
-<<<<<<< HEAD
                         our_column_specs == column_specs
                             && our_keys == keys
                             && our_del_policy == del_policy
-=======
-                        our_column_specs == column_specs && our_keys == keys && our_del_policy == del_policy && our_user_column == user_column
->>>>>>> 26dd801f... modified the sqlquery to incorporate user column
                     }
                     _ => false,
                 }

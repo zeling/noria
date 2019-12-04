@@ -216,6 +216,36 @@ impl State for PersistentState {
     fn clear(&mut self) {
         unreachable!("can't clear PersistentState")
     }
+
+    fn export_user_rows(&self, user_key: DataType) -> Vec<Vec<u8>> {
+        let mut rows = Vec::new();
+        let db = self.db.as_ref().unwrap();
+        if let Some(ucol) = self.user_column {
+            let prefix = Self::serialize_prefix(&KeyType::Single(&user_key));
+            if let Some(index) = self.indices.iter().find(|idx| &idx.columns == &[ucol]) {
+                let value_cf = db.cf_handle(&index.column_family).unwrap();
+                db.prefix_iterator_cf(value_cf, prefix)
+                    .unwrap()
+                    .for_each(|(_, v)| {
+                        rows.push(v.into_vec());
+                    });
+            }
+        }
+        rows
+    }
+
+    fn import_user_rows(&mut self, raw_rows: &Vec<Vec<u8>>) {
+        // TODO: change potential duplicated rows.
+        let mut batch = WriteBatch::default();
+        for raw_row in raw_rows.iter() {
+            let row: Vec<DataType> = bincode::deserialize(raw_row).unwrap();
+            self.insert(&mut batch, &row);
+        }
+        // Sync the writes to RocksDB's WAL:
+        let mut opts = rocksdb::WriteOptions::default();
+        opts.set_sync(true);
+        self.db.as_ref().unwrap().write_opt(batch, &opts).unwrap();
+    }
 }
 
 impl PersistentState {
@@ -545,36 +575,6 @@ impl PersistentState {
                 .expect("tried removing non-existant row");
             do_remove(&key[..]);
         };
-    }
-
-    fn export_user_rows(&self, user_key: DataType) -> Vec<Vec<u8>> {
-        let mut rows = Vec::new();
-        let db = self.db.as_ref().unwrap();
-        if let Some(ucol) = self.user_column {
-            let prefix = Self::serialize_prefix(&KeyType::Single(&user_key));
-            if let Some(index) = self.indices.iter().find(|idx| &idx.columns == &[ucol]) {
-                let value_cf = db.cf_handle(&index.column_family).unwrap();
-                db.prefix_iterator_cf(value_cf, prefix)
-                    .unwrap()
-                    .for_each(|(_, v)| {
-                        rows.push(v.into_vec());
-                    });
-            }
-        }
-        rows
-    }
-
-    fn import_user_rows(&mut self, raw_rows: Vec<Vec<u8>>) {
-        // TODO: change potential duplicated rows.
-        let mut batch = WriteBatch::default();
-        for raw_row in raw_rows.iter() {
-            let row: Vec<DataType> = bincode::deserialize(raw_row).unwrap();
-            self.insert(&mut batch, &row);
-        }
-        // Sync the writes to RocksDB's WAL:
-        let mut opts = rocksdb::WriteOptions::default();
-        opts.set_sync(true);
-        self.db.as_ref().unwrap().write_opt(batch, &opts).unwrap();
     }
 }
 
