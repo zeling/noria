@@ -463,6 +463,30 @@ impl<A: Authority + 'static> ControllerHandle<A> {
         self.rpc("remove_node", view, "failed to remove node")
     }
 
+    /// Export user shard from the dataflow.
+    ///
+    /// `Self::poll_ready` must have returned `Async::Ready` before you call this method.
+    pub fn export_user_shard(
+        &mut self,
+        user_id: String,
+    ) -> impl Future<Item = HashMap<String, Vec<Vec<u8>>>, Error = failure::Error> + Send {
+        self.rpc("export_user_shard", user_id, "failed to export user shard")
+    }
+
+    /// Import user shard to the dataflow.
+    ///
+    /// `Self::poll_ready` must have returned `Async::Ready` before you call this method.
+    pub fn import_user_shard(
+        &mut self,
+        user_shard: HashMap<String, Vec<Vec<u8>>>,
+    ) -> impl Future<Item = (), Error = failure::Error> + Send {
+        self.rpc(
+            "import_user_shard",
+            user_shard,
+            "failed to import user shard",
+        )
+    }
+
     /// Construct a synchronous interface to this controller instance using the given executor to
     /// execute all operations.
     ///
@@ -650,6 +674,36 @@ where
     /// See [`ControllerHandle::remove_node`].
     pub fn remove_node(&mut self, view: NodeIndex) -> Result<(), failure::Error> {
         let fut = self.handle()?.remove_node(view);
+        self.run(fut)
+    }
+
+    /// Enumerate all know base tables along with there purposes.
+    ///
+    /// See [`ControllerHandle::purposes`].
+    pub fn purposes(&mut self) -> Result<BTreeMap<String, String>, failure::Error> {
+        let fut = self.handle()?.purposes();
+        self.run(fut)
+    }
+
+    /// Export user shard from the dataflow.
+    ///
+    /// See [`ControllerHandle::export_user_shard`].
+    pub fn export_user_shard(
+        &mut self,
+        user_id: String,
+    ) -> Result<HashMap<String, Vec<Vec<u8>>>, failure::Error> {
+        let fut = self.handle()?.export_user_shard(user_id);
+        self.run(fut)
+    }
+
+    /// Export user shard from the dataflow.
+    ///
+    /// See [`ControllerHandle::export_user_shard`].
+    pub fn import_user_shard(
+        &mut self,
+        user_shard: HashMap<String, Vec<Vec<u8>>>,
+    ) -> Result<(), failure::Error> {
+        let fut = self.handle()?.import_user_shard(user_shard);
         self.run(fut)
     }
 }

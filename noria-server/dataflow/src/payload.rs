@@ -233,6 +233,17 @@ pub enum Packet {
 
     /// Ask domain to log its state size
     UpdateStateSize,
+
+    /// Ask domain to export all the data related to the specified user.
+    ExportUserRows {
+        user_id: String,
+        nodes: Vec<LocalNodeIndex>,
+    },
+
+    /// Ask domain to import the user shard for a specific user.
+    ImportUserRows {
+        user_rows: HashMap<LocalNodeIndex, Vec<Vec<u8>>>,
+    },
 }
 
 impl Packet {
@@ -415,6 +426,7 @@ pub enum ControlReplyPacket {
         HashMap<petgraph::graph::NodeIndex, noria::debug::stats::NodeStats>,
     ),
     Booted(usize, SocketAddr),
+    UserRows(HashMap<String, Vec<Vec<u8>>>),
 }
 
 impl ControlReplyPacket {
