@@ -1,4 +1,5 @@
 use column::Column;
+use dataflow::DeletionPolicy;
 use node::{MirNode, MirNodeType};
 use query::MirQuery;
 use slog;
@@ -242,6 +243,8 @@ mod tests {
                 column_specs: vec![cspec("aa"), cspec("ab")],
                 keys: vec![Column::from("aa")],
                 adapted_over: None,
+                del_policy: DeletionPolicy::default(),
+                user_column: None,
             },
             vec![],
             vec![],
@@ -254,6 +257,8 @@ mod tests {
                 column_specs: vec![cspec("ba"), cspec("bb")],
                 keys: vec![Column::from("ba")],
                 adapted_over: None,
+                del_policy: DeletionPolicy::default(),
+                user_column: None,
             },
             vec![],
             vec![],

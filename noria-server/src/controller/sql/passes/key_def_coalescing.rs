@@ -63,6 +63,7 @@ mod tests {
             ],
             keys: None,
             gdpr_undeletable: false,
+            gdpr_user_column: None,
         };
 
         let res = SqlQuery::CreateTable(q).coalesce_key_definitions();
