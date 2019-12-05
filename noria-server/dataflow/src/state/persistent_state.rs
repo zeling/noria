@@ -216,6 +216,36 @@ impl State for PersistentState {
     fn clear(&mut self) {
         unreachable!("can't clear PersistentState")
     }
+
+    fn export_user_rows(&self, user_key: DataType) -> Vec<Vec<u8>> {
+        let mut rows = Vec::new();
+        let db = self.db.as_ref().unwrap();
+        if let Some(ucol) = self.user_column {
+            let prefix = Self::serialize_prefix(&KeyType::Single(&user_key));
+            if let Some(index) = self.indices.iter().find(|idx| &idx.columns == &[ucol]) {
+                let value_cf = db.cf_handle(&index.column_family).unwrap();
+                db.prefix_iterator_cf(value_cf, prefix)
+                    .unwrap()
+                    .for_each(|(_, v)| {
+                        rows.push(v.into_vec());
+                    });
+            }
+        }
+        rows
+    }
+
+    fn import_user_rows(&mut self, raw_rows: &Vec<Vec<u8>>) {
+        // TODO: change potential duplicated rows.
+        let mut batch = WriteBatch::default();
+        for raw_row in raw_rows.iter() {
+            let row: Vec<DataType> = bincode::deserialize(raw_row).unwrap();
+            self.insert(&mut batch, &row);
+        }
+        // Sync the writes to RocksDB's WAL:
+        let mut opts = rocksdb::WriteOptions::default();
+        opts.set_sync(true);
+        self.db.as_ref().unwrap().write_opt(batch, &opts).unwrap();
+    }
 }
 
 impl PersistentState {
@@ -545,23 +575,6 @@ impl PersistentState {
                 .expect("tried removing non-existant row");
             do_remove(&key[..]);
         };
-    }
-
-    fn export_user_rows(&self, user_key: DataType) -> Vec<Vec<u8>> {
-        let mut rows = Vec::new();
-        let db = self.db.as_ref().unwrap();
-        if let Some(ucol) = self.user_column {
-            let prefix = Self::serialize_prefix(&KeyType::Single(&user_key));
-            if let Some(index) = self.indices.iter().find(|idx| &idx.columns == &[ucol]) {
-                let value_cf = db.cf_handle(&index.column_family).unwrap();
-                db.prefix_iterator_cf(value_cf, prefix)
-                    .unwrap()
-                    .for_each(|(_, v)| {
-                        rows.push(v.into_vec());
-                    });
-            }
-        }
-        rows
     }
 }
 
@@ -1290,7 +1303,7 @@ mod tests {
     #[test]
     fn test_export_user_rows() {
         let mut state = PersistentState::new(
-            String::from("user_column_test"),
+            String::from("export_user_rows_test"),
             None,
             &PersistenceParameters {
                 user_column: Some(0),
@@ -1316,5 +1329,34 @@ mod tests {
                 bincode::serialize(&records[2][..]).unwrap()
             ]
         );
+    }
+
+    #[test]
+    fn test_import_user_rows() {
+        let mut state = PersistentState::new(
+            String::from("import_user_rows_test"),
+            None,
+            &PersistenceParameters {
+                user_column: Some(0),
+                ..PersistenceParameters::default()
+            },
+        );
+        let records: Records = vec![
+            (vec!["Alice".into(), 1.into()], true),
+            (vec!["Alice".into(), 2.into()], true),
+        ]
+        .into();
+        let exported_data = vec![
+            bincode::serialize(&records[0][..]).unwrap(),
+            bincode::serialize(&records[1][..]).unwrap(),
+        ];
+
+        state.import_user_rows(exported_data);
+
+        // Check the rows exists in the persistent state.
+        match state.lookup(&[0], &KeyType::Single(&records[0][0])) {
+            LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows.len(), 2),
+            _ => unreachable!(),
+        };
     }
 }

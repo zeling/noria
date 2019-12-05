@@ -51,6 +51,13 @@ crate trait State: SizeOf + Send {
     fn evict_keys(&mut self, tag: Tag, keys: &[Vec<DataType>]) -> Option<(&[usize], u64)>;
 
     fn clear(&mut self);
+
+    fn export_user_rows(&self, user_key: DataType) -> Vec<Vec<u8>> {
+        unimplemented!("export_user_rows() is only implemented for PersistentState.")
+    }
+    fn import_user_rows(&mut self, raw_rows: &Vec<Vec<u8>>) {
+        unimplemented!("import_user_rows() is only implemented for PersistentState.")
+    }
 }
 
 #[derive(Clone, Debug)]
