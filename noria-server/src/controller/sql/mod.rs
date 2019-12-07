@@ -1155,10 +1155,10 @@ mod tests {
         .await;
     }
 
-    #[test]
-    fn it_incorporates_sql_with_purposes() {
+    #[tokio::test(threadpool)]
+    async fn it_incorporates_sql_with_purposes() {
         // set up graph
-        let mut g = integration::start_simple("it_incorporates_sql_with_purposes");
+        let mut g = integration::start_simple("it_incorporates_sql_with_purposes").await;
         g.migrate(|mig| {
             let mut inc = SqlIncorporator::default();
             // Establish a base write type
@@ -1173,11 +1173,10 @@ mod tests {
 
             // Try a simple query
             let purpose = "Access User Name";
-            let res = inc.add_query_with_purpose(
+            let res = inc.add_query(
                 "SELECT users.name FROM users WHERE users.id = 42;",
                 None,
                 mig,
-                purpose,
             );
             assert!(res.is_ok());
 
@@ -1471,11 +1470,11 @@ mod tests {
         .await;
     }
 
-    #[test]
-    fn it_incorporates_parsed_sql_with_purpose() {
+    #[tokio::test(threadpool)]
+    async fn it_incorporates_parsed_sql_with_purpose() {
         use super::sql_parser;
         // set up graph
-        let mut g = integration::start_simple("it_incorporates_parsed_sql_with_purposes");
+        let mut g = integration::start_simple("it_incorporates_parsed_sql_with_purposes").await;
         g.migrate(|mig| {
             let mut inc = SqlIncorporator::default();
             // Establish a base write type

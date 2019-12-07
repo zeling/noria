@@ -1352,7 +1352,7 @@ mod tests {
             bincode::serialize(&records[1][..]).unwrap(),
         ];
 
-        state.import_user_rows(exported_data);
+        state.import_user_rows(&exported_data);
 
         // Check the rows exists in the persistent state.
         match state.lookup(&[0], &KeyType::Single(&records[0][0])) {
