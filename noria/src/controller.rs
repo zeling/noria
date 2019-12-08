@@ -5,14 +5,20 @@ use crate::view::{View, ViewBuilder, ViewRpc};
 use crate::ActivationResult;
 #[cfg(debug_assertions)]
 use assert_infrequent;
+use bincode;
 use failure::{self, ResultExt};
 use futures_util::{future, try_stream::TryStreamExt};
 use hyper;
 use petgraph::graph::NodeIndex;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::{BTreeMap, HashMap};
+use std::fs::File;
+use std::io::Write;
 use std::net::SocketAddr;
+use std::os::unix::io::FromRawFd;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{
@@ -477,5 +483,107 @@ impl<A: Authority + 'static> ControllerHandle<A> {
     ) -> impl Future<Output = Result<(), failure::Error>> {
         // TODO: this should likely take a view name, and we should verify that it's a Reader.
         self.rpc("remove_node", view, "failed to remove node")
+    }
+}
+
+fn encrypt_and_sign<S: Serialize, F: FnMut(&mut File)>(
+    s: S,
+    mut f: F,
+    me: &str,
+    recipient: &str,
+) -> Result<String, failure::Error> {
+    let (r, w) = nix::unistd::pipe()?;
+    let mut gpg = Command::new("gpg")
+        .arg("--armor")
+        .arg("--encrypt")
+        .arg("--local-user")
+        .arg(me)
+        .arg("-r")
+        .arg(recipient)
+        .arg("--passphrase-fd")
+        .arg(r.to_string())
+        .arg("--sign")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    {
+        let mut passphrase = unsafe { File::from_raw_fd(w) };
+        f(&mut passphrase);
+        passphrase.flush()?;
+    }
+    {
+        let input = gpg.stdin.as_mut().expect("failed to get stdin");
+        bincode::serialize_into(input, &s)?;
+    }
+    let output = gpg.wait_with_output()?;
+    if !output.status.success() {
+        return Err(format_err!("failed to run gpg"));
+    }
+    Ok(String::from_utf8(output.stdout)?)
+}
+
+fn verify_and_decrypt<D: for<'a> Deserialize<'a>, F: FnMut(&mut File)>(
+    armored: &str,
+    me: &str,
+    sender: &str,
+    mut f: F,
+) -> Result<D, failure::Error> {
+    let (r, w) = nix::unistd::pipe()?;
+    let mut gpg = Command::new("gpg")
+        .arg("--armor")
+        .arg("--decrypt")
+        .arg("--local-user")
+        .arg(me)
+        .arg("--passphrase-fd")
+        .arg(r.to_string())
+        .arg("--status-fd") // machine readable status
+        .arg("2")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    {
+        let mut passphrase = unsafe { File::from_raw_fd(w) };
+        f(&mut passphrase);
+        passphrase.flush()?;
+    }
+    {
+        let input = gpg.stdin.as_mut().expect("failed to get stdin");
+        input.write_all(armored.as_bytes())?;
+    }
+    let output = gpg.wait_with_output()?;
+    if !output.status.success() {
+        return Err(format_err!("failed to run gpg"));
+    }
+    let re = Regex::new(&format!(r"GOODSIG .* <{}>", sender)).unwrap();
+    println!("{}", std::str::from_utf8(&output.stderr[..]).unwrap());
+    if !re.is_match(std::str::from_utf8(&output.stderr[..]).unwrap()) {
+        return Err(format_err!("failed to verify the sender {}", sender));
+    }
+    Ok(bincode::deserialize(&output.stdout[..])?)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::io::Write;
+    #[test]
+    fn test_encrypt_and_sign_and_verify_and_decrypt() {
+        let sender = "test.sender@example.com";
+        let receiver = "test.receiver@example.com";
+        let encrypted = encrypt_and_sign(
+            "abc",
+            |f| {
+                f.write_all(b"123456\n").unwrap();
+            },
+            sender,
+            receiver,
+        )
+        .expect("should encrypt");
+        let decrypted: String = verify_and_decrypt(&encrypted, receiver, sender, |f| {
+            f.write_all(b"123456\n").unwrap();
+        })
+        .expect("should decrypt");
+        assert_eq!(decrypted, "abc");
     }
 }
