@@ -231,6 +231,12 @@ impl ControllerInner {
             (&Method::POST, "/get_statistics") => {
                 return Ok(Ok(json::to_string(&self.get_statistics()).unwrap()));
             }
+            (&Method::POST, "/purposes") => {
+                return Ok(Ok(json::to_string(&self.purposes()).unwrap()));
+            }
+            (&Method::GET, "/purposes") => {
+                return Ok(Ok(json::to_string(&self.purposes()).unwrap()));
+            }
             _ => {}
         }
 
@@ -245,7 +251,6 @@ impl ControllerInner {
             (Method::POST, "/inputs") => Ok(Ok(json::to_string(&self.inputs()).unwrap())),
             (Method::POST, "/outputs") => Ok(Ok(json::to_string(&self.outputs()).unwrap())),
             // TODO: Figure out POST/GET?
-            (Method::POST, "/purporses") => Ok(Ok(json::to_string(&self.purposes()).unwrap())),
             (Method::GET, "/instances") => Ok(Ok(json::to_string(&self.get_instances()).unwrap())),
             (Method::GET, "/nodes") => {
                 // TODO(malte): this is a pretty yucky hack, but hyper doesn't provide easy access
@@ -760,6 +765,7 @@ impl ControllerInner {
     }
 
     fn purposes(&self) -> BTreeMap<String, String> {
+        info!(self.log, "asked to fetch purposes.");
         self.ingredients
             .neighbors_directed(self.source, petgraph::EdgeDirection::Outgoing)
             .map(|n| {
@@ -1416,9 +1422,10 @@ impl ControllerInner {
             trace!(self.log, "Importing user data to domain {}", domain.index());
             // Extract all related user rows - partial user shard.
             let domain_handle = self.domains.get_mut(&domain).unwrap();
-            match domain_handle
-                .send_to_healthy(Box::new(Packet::ImportUserRows { user_rows }), &self.workers)
-            {
+            match domain_handle.send_to_healthy(
+                Box::new(Packet::ImportUserRows { user_rows }),
+                &self.workers,
+            ) {
                 Ok(_) => (),
                 Err(e) => match e {
                     SendError::IoError(ref ioe) => {
