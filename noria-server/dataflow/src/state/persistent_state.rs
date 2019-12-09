@@ -579,7 +579,7 @@ impl PersistentState {
         rows    
     }
 
-    fn remove(&mut self, batch: &mut WriteBatch, r: &[DataType]) {
+    fn remove(&self, batch: &mut WriteBatch, r: &[DataType]) {
         // FIXME: Maybe more complicated policies?
         let mut pseudo_rows = Vec::new();
         if self.del_policy == DeletionPolicy::Undeletable {
