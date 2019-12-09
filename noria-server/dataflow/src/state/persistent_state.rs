@@ -527,15 +527,79 @@ impl PersistentState {
         }
     }
 
+    //using hash function to get the pseudonymized value for the user_column
+    // for example, if the user_column refers to the user_id, and is originally = 100,
+    //then hash() will get the hashed value of 100. we will use this hashed value to replace 
+    // the original value
+    fn hash(&self, d:u8)-> u8{
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        d.hash(&mut h);
+        let pseu_id = h.finish() as u8;
+        return pseu_id;
+    }
+    //this function returns the pseudonymized rows for the user specified by the user_key
+    fn pseudo_user_rows(&self, user_key: DataType) -> Vec<Vec<u8>> {
+        let mut rows = Vec::new();
+        let db = self.db.as_ref().unwrap();
+        if let Some(ucol) = self.user_column {
+            let prefix = Self::serialize_prefix(&KeyType::Single(&user_key));
+            if let Some(index) = self.indices.iter().find(|idx| &idx.columns == &[ucol]) {
+                let value_cf = db.cf_handle(&index.column_family).unwrap();
+                db.prefix_iterator_cf(value_cf, prefix)
+                    .unwrap()
+                    .for_each(|(_, v)| {
+                        let mut v_vec = v.into_vec();
+                        v_vec[ucol] = self.hash(v_vec[ucol]);//rewrite using the hash
+                        rows.push(v_vec);
+                    });
+            }
+        }
+        rows
+    }
+    fn pseudonymize(&self, batch: &mut WriteBatch, r: &[DataType])-> Vec<Vec<u8>>{
+        let mut rows = Vec::new();
+        // step1: get the user_column 
+        if self.user_column == None {
+            return rows;
+        }
+        let user_column = self.user_column.unwrap();
+        //step2: get user_keys:
+        let user_column_keys = Self::build_key(&r, &[user_column]);
+        
+        let uc_keys = Self::serialize_prefix(&user_column_keys); 
+        
+        //step3: get all rows that need to be inserted into db later. 
+        for user_key in uc_keys.iter(){  //uc_keys supposed to be Vec<u8> type
+            let mut uk: DataType = DataType::Int(5); //Todo: how to cast user_key to DataType?
+            let mut pseudo_rows = self.pseudo_user_rows(uk);
+            rows.append(&mut pseudo_rows);
+        }
+        rows    
+    }
+
     fn remove(&self, batch: &mut WriteBatch, r: &[DataType]) {
         // FIXME: Maybe more complicated policies?
+        let mut pseudo_rows = Vec::new();
         if self.del_policy == DeletionPolicy::Undeletable {
             return;
+        }
+        if self.del_policy == DeletionPolicy::Pseudonymizable {
+            pseudo_rows = self.pseudonymize(batch, r); //here get the pseudo rows associated with relevant users
+            for row in pseudo_rows.iter(){ //here we insert these new pseudonymized records
+                
+                let mut temp: Vec<DataType> =  Vec::new(); //FIXME: this temporary hack needs to be changed 
+                let record: Record = temp.into(); //FIXME: this temporary hack needs to be changed 
+                // let record: Record = row.into(); //FIXME: how to cast Vec<u8> to Vec<DataType>?
+                // self.process_records(&mut record.into(), None); //FIXME: 
+            }
+            //didn't return here=>because we want to perform the following remove logic to delete the old records
         }
         let db = self.db.as_ref().unwrap();
         let pk_index = &self.indices[0];
         let value_cf = db.cf_handle(&pk_index.column_family).unwrap();
-        let mut do_remove = move |primary_key: &[u8]| {
+        let mut do_remove = move |primary_key: &[u8]| { //FIXME
             // Delete the value row first (primary index):
             batch.delete_cf(value_cf, &primary_key).unwrap();
 
@@ -550,7 +614,7 @@ impl PersistentState {
 
         let pk = Self::build_key(&r, &pk_index.columns);
         let prefix = Self::serialize_prefix(&pk);
-        if self.has_unique_index {
+        if self.has_unique_index {  //FIXME
             if cfg!(debug_assertions) {
                 // This would imply that we're trying to delete a different row than the one we
                 // found when we resolved the DeleteRequest in Base. This really shouldn't happen,
@@ -1359,5 +1423,41 @@ mod tests {
             LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows.len(), 2),
             _ => unreachable!(),
         };
+    }
+    #[test]
+    fn persistent_state_pseudonymizable_policy_test() {
+        let mut state = PersistentState::new(
+            String::from("del_policy_test"),
+            None,
+            &PersistenceParameters {
+                del_policy: DeletionPolicy::Pseudonymizable,
+                user_column: Some(0),
+                ..PersistenceParameters::default()
+            },
+        );
+        let mut records: Records = vec![
+            (vec![1.into(), "A".into()], true),
+            (vec![1.into(), "A".into()], false),
+            (vec![2.into(), "B".into()], true),
+            (vec![3.into(), "C".into()], true),
+        ]
+        .into();
+
+        state.add_key(&[0], None);
+        state.add_key(&[1], None);
+        state.process_records(&mut records[0].clone().into(), None);
+        state.process_records(&mut records[1].clone().into(), None);
+        state.process_records(&mut records[2].clone().into(), None);
+        state.process_records(&mut records[3].clone().into(), None);
+
+        // Make sure the first record is not deleted but cannot be accessed with its original key
+        match state.lookup(&[0], &KeyType::Single(&records[0][0])) {
+            LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows.len(), 1),
+            _ => unreachable!(),
+        };
+        match state.lookup(&[1], &KeyType::Single(&records[0][1])) {
+            LookupResult::Some(RecordResult::Owned(rows)) => assert_eq!(rows.len(), 2),
+            _ => unreachable!(),
+        };   
     }
 }

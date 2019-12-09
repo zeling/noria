@@ -322,25 +322,32 @@ impl<A: Authority + 'static> ControllerHandle<A> {
     /// Export user shard from the dataflow.
     ///
     /// `Self::poll_ready` must have returned `Async::Ready` before you call this method.
-    pub fn export_user_shard(
+    pub async fn export_user_shard<F: FnMut(&mut File)>(
         &mut self,
         user_id: String,
-    ) -> impl Future<Output = Result<HashMap<String, Vec<Vec<u8>>>, failure::Error>> {
-        self.rpc("export_user_shard", user_id, "failed to export user shard")
+        me: &str,
+        recipient: &str,
+        f: F,
+    ) -> Result<String, failure::Error> {
+        let shards: HashMap<String, Vec<Vec<u8>>> = self
+            .rpc("export_user_shard", user_id, "failed to export user shard")
+            .await?;
+        encrypt_and_sign(shards, f, me, recipient)
     }
 
     /// Import user shard to the dataflow.
     ///
     /// `Self::poll_ready` must have returned `Async::Ready` before you call this method.
-    pub fn import_user_shard(
+    pub async fn import_user_shard<F: FnMut(&mut File)>(
         &mut self,
-        user_shard: HashMap<String, Vec<Vec<u8>>>,
-    ) -> impl Future<Output = Result<(), failure::Error>> {
-        self.rpc(
-            "import_user_shard",
-            user_shard,
-            "failed to import user shard",
-        )
+        armored: &str,
+        me: &str,
+        sender: &str,
+        f: F,
+    ) -> Result<(), failure::Error> {
+        let shards: HashMap<String, Vec<Vec<u8>>> = verify_and_decrypt(armored, me, sender, f)?;
+        self.rpc("import_user_shard", shards, "failed to import user shard")
+            .await
     }
 
     /// Obtain a `View` that allows you to query the given external view.
