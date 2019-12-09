@@ -567,11 +567,11 @@ impl PersistentState {
         let user_column = self.user_column.unwrap();
         //step2: get user_keys:
         let user_column_keys = Self::build_key(&r, &[user_column]);
-        user_column_keys = Self::serialize_prefix(&user_column_keys)
+        user_column_keys = Self::serialize_prefix(&user_column_keys) //Todo: cannot figure out why this cause mismatch?
 
         //step3: get all rows that need to be inserted into db later. 
         for user_key in user_column_keys.iter(){
-            pseudo_rows = self.pseudo_user_rows(user_key);
+            let pseudo_rows = self.pseudo_user_rows(user_key);
             rows.append(&mut pseudo_rows);
             assert(pseudo_rows, []) ;
         }
