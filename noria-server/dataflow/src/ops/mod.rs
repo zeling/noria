@@ -6,6 +6,7 @@ use crate::prelude::*;
 pub mod distinct;
 pub mod filter;
 pub mod grouped;
+pub mod guard;
 pub mod identity;
 pub mod join;
 pub mod latest;
@@ -31,6 +32,7 @@ pub enum NodeOperator {
     Trigger(trigger::Trigger),
     Rewrite(rewrite::Rewrite),
     Distinct(distinct::Distinct),
+    Guard(guard::Guard),
 }
 
 macro_rules! nodeop_from_impl {
@@ -65,6 +67,7 @@ nodeop_from_impl!(NodeOperator::TopK, topk::TopK);
 nodeop_from_impl!(NodeOperator::Trigger, trigger::Trigger);
 nodeop_from_impl!(NodeOperator::Rewrite, rewrite::Rewrite);
 nodeop_from_impl!(NodeOperator::Distinct, distinct::Distinct);
+nodeop_from_impl!(NodeOperator::Guard, guard::Guard);
 
 macro_rules! impl_ingredient_fn_mut {
     ($self:ident, $fn:ident, $( $arg:ident ),* ) => {
@@ -82,6 +85,7 @@ macro_rules! impl_ingredient_fn_mut {
             NodeOperator::Trigger(ref mut i) => i.$fn($($arg),*),
             NodeOperator::Rewrite(ref mut i) => i.$fn($($arg),*),
             NodeOperator::Distinct(ref mut i) => i.$fn($($arg),*),
+            NodeOperator::Guard(ref mut i) => i.$fn($($arg),*),
         }
     }
 }
@@ -102,6 +106,7 @@ macro_rules! impl_ingredient_fn_ref {
             NodeOperator::Trigger(ref i) => i.$fn($($arg),*),
             NodeOperator::Rewrite(ref i) => i.$fn($($arg),*),
             NodeOperator::Distinct(ref i) => i.$fn($($arg),*),
+            NodeOperator::Guard(ref i) => i.$fn($($arg),*),
         }
     }
 }
@@ -274,6 +279,44 @@ pub mod test {
         ) -> IndexPair {
             use crate::node::special::Base;
             let i = Base::new(defaults);
+            let global = self.graph.add_node(Node::new(name, fields, i));
+            self.graph.add_edge(self.source, global, ());
+            let mut remap = HashMap::new();
+            let local = unsafe { LocalNodeIndex::make(self.remap.len() as u32) };
+            let mut ip: IndexPair = global.into();
+            ip.set_local(local);
+            self.graph
+                .node_weight_mut(global)
+                .unwrap()
+                .set_finalized_addr(ip);
+            remap.insert(global, ip);
+            self.graph
+                .node_weight_mut(global)
+                .unwrap()
+                .on_commit(&remap);
+            self.states.insert(local, Box::new(MemoryState::default()));
+            self.remap.insert(global, ip);
+            ip
+        }
+
+        pub fn add_base_with_user_column(
+            &mut self,
+            name: &str,
+            fields: &[&str],
+            user_column: Option<usize>,
+        ) -> IndexPair {
+            self.add_base_defaults_with_user_column(name, fields, vec![], user_column)
+        }
+
+        pub fn add_base_defaults_with_user_column(
+            &mut self,
+            name: &str,
+            fields: &[&str],
+            defaults: Vec<DataType>,
+            user_column: Option<usize>,
+        ) -> IndexPair {
+            use crate::node::special::Base;
+            let i = Base::new(defaults).with_user_column(user_column);
             let global = self.graph.add_node(Node::new(name, fields, i));
             self.graph.add_edge(self.source, global, ());
             let mut remap = HashMap::new();
@@ -467,6 +510,12 @@ pub mod test {
 
         pub fn node(&self) -> cell::Ref<Node> {
             self.nodes[*self.nut.unwrap()].borrow()
+        }
+
+        /// Set persistent state for the operator, only useful for guard operator.
+        pub fn set_persistent_state(&mut self, state: PersistentState) {
+            let local = unsafe { LocalNodeIndex::make((self.remap.len() - 1) as u32) };
+            self.states.insert(local, Box::new(state));
         }
 
         pub fn narrow_base_id(&self) -> IndexPair {

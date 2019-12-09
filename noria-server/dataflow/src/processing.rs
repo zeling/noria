@@ -150,6 +150,7 @@ where
     ///    π    |  Projection
     ///    ≡    |  Identity
     ///    T    |  Trigger
+    ///    G    |  Guard
     fn description(&self, detailed: bool) -> String;
 
     /// Provide measurements of transient internal state that may be useful in debugging contexts.

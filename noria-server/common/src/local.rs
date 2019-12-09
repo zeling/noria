@@ -68,6 +68,10 @@ impl IndexPair {
         self.global
     }
 
+    pub fn as_local(&self) -> Option<LocalNodeIndex> {
+        self.local
+    }
+
     pub fn remap(&mut self, mapping: &HashMap<NodeIndex, IndexPair>) {
         *self = *mapping
             .get(&self.global)
