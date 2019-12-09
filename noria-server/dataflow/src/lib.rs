@@ -76,6 +76,7 @@ pub enum DurabilityMode {
 pub enum DeletionPolicy {
     Deletable,
     Undeletable,
+    Pseudonymizable,
 }
 
 impl Default for DeletionPolicy {
