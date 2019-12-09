@@ -36,3 +36,13 @@ rocksdb = {version = "0.12.2", default-features = false, features = ["lz4"] }
 # local deps
 common = { path = "../common" }
 noria = { path = "../../noria" }
+
+[dev-dependencies]
+criterion = "0.3.0"
+
+[[bench]]
+name = "user_index_overhead_bench"
+harness = false
+
+[features]
+benchmark = []

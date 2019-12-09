@@ -147,3 +147,19 @@ impl PersistenceParameters {
 }
 
 pub use noria::shard_by;
+
+#[cfg(feature = "benchmark")]
+pub mod bench {
+    use crate::prelude::*;
+    pub fn setup_bench_state(params: PersistenceParameters) -> PersistentState {
+        PersistentState::new("bench_state".to_string(), Some(&[0]), &params)
+    }
+
+    pub fn bench_state_process_record(
+        state: &mut PersistentState,
+        record: Vec<DataType>,
+        positive: bool,
+    ) {
+        state.process_records(&mut vec![(record, positive)].into(), None);
+    }
+}
