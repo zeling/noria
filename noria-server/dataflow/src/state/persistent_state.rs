@@ -558,27 +558,28 @@ impl PersistentState {
         }
         rows
     }
-    fn pseudonymize(&self, batch: &mut WriteBatch, r: &[DataType]){
+    fn pseudonymize(&self, batch: &mut WriteBatch, r: &[DataType])-> Vec<Vec<u8>>{
         let mut rows = Vec::new();
         // step1: get the user_column 
         if self.user_column == None {
-            return;
+            return rows;
         }
         let user_column = self.user_column.unwrap();
         //step2: get user_keys:
         let user_column_keys = Self::build_key(&r, &[user_column]);
-        user_column_keys = Self::serialize_prefix(&user_column_keys) //Todo: cannot figure out why this cause mismatch?
-
+        
+        let uc_keys = Self::serialize_prefix(&user_column_keys); 
+        
         //step3: get all rows that need to be inserted into db later. 
-        for user_key in user_column_keys.iter(){
-            let pseudo_rows = self.pseudo_user_rows(user_key);
+        for user_key in uc_keys.iter(){  //uc_keys supposed to be Vec<u8> type
+            let mut uk: DataType = DataType::Int(5); //Todo: how to cast user_key to DataType?
+            let mut pseudo_rows = self.pseudo_user_rows(uk);
             rows.append(&mut pseudo_rows);
-            assert(pseudo_rows, []) ;
         }
         rows    
     }
 
-    fn remove(&self, batch: &mut WriteBatch, r: &[DataType]) {
+    fn remove(&mut self, batch: &mut WriteBatch, r: &[DataType]) {
         // FIXME: Maybe more complicated policies?
         let mut pseudo_rows = Vec::new();
         if self.del_policy == DeletionPolicy::Undeletable {
@@ -587,15 +588,17 @@ impl PersistentState {
         if self.del_policy == DeletionPolicy::Pseudonymizable {
             pseudo_rows = self.pseudonymize(batch, r); //here get the pseudo rows associated with relevant users
             for row in pseudo_rows.iter(){ //here we insert these new pseudonymized records
-                let record: Record = row.into();
-                self.process_records(&mut record.into(), None);
+                let mut temp: Vec<DataType> =  Vec::new();
+                let record: Record = temp.into(); //FIXME: this need to be changed
+                // let record: Record = row.into(); //FIXME: how to cast Vec<u8> to Vec<DataType>?
+                // self.process_records(&mut record.into(), None);
             }
             //didn't return here=>because we want to perform the following remove logic to delete the old records
         }
         let db = self.db.as_ref().unwrap();
         let pk_index = &self.indices[0];
         let value_cf = db.cf_handle(&pk_index.column_family).unwrap();
-        let mut do_remove = move |primary_key: &[u8]| {
+        let mut do_remove = move |primary_key: &[u8]| { //FIXME
             // Delete the value row first (primary index):
             batch.delete_cf(value_cf, &primary_key).unwrap();
 
