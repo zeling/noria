@@ -588,10 +588,11 @@ impl PersistentState {
         if self.del_policy == DeletionPolicy::Pseudonymizable {
             pseudo_rows = self.pseudonymize(batch, r); //here get the pseudo rows associated with relevant users
             for row in pseudo_rows.iter(){ //here we insert these new pseudonymized records
-                let mut temp: Vec<DataType> =  Vec::new();
-                let record: Record = temp.into(); //FIXME: this need to be changed
+                
+                let mut temp: Vec<DataType> =  Vec::new(); //FIXME: this temporary hack needs to be changed 
+                let record: Record = temp.into(); //FIXME: this temporary hack needs to be changed 
                 // let record: Record = row.into(); //FIXME: how to cast Vec<u8> to Vec<DataType>?
-                // self.process_records(&mut record.into(), None);
+                // self.process_records(&mut record.into(), None); //FIXME: 
             }
             //didn't return here=>because we want to perform the following remove logic to delete the old records
         }
@@ -613,7 +614,7 @@ impl PersistentState {
 
         let pk = Self::build_key(&r, &pk_index.columns);
         let prefix = Self::serialize_prefix(&pk);
-        if self.has_unique_index {
+        if self.has_unique_index {  //FIXME
             if cfg!(debug_assertions) {
                 // This would imply that we're trying to delete a different row than the one we
                 // found when we resolved the DeleteRequest in Base. This really shouldn't happen,
