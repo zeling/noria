@@ -8,6 +8,11 @@ pub struct Guard {
     us: Option<IndexPair>,
     src: IndexPair,
     user_column: Option<usize>,
+
+    // Index for user in persistent storage for objection.
+    key_column: usize,
+    // Index for Objection value in persistent storage.
+    value_column: usize,
 }
 
 impl Guard {
@@ -20,6 +25,8 @@ impl Guard {
             us: None,
             src: src.into(),
             user_column: None,
+            key_column: 0,
+            value_column: 1,
         }
     }
 }
@@ -78,17 +85,11 @@ impl Ingredient for Guard {
                 .expect("guard must have its own persistent state for permission.");
 
             rs.retain(|r| {
-                match db.lookup(&[0], &KeyType::Single(&r[ucolumn])) {
+                match db.lookup(&[self.key_column], &KeyType::Single(&r[ucolumn])) {
                     LookupResult::Some(RecordResult::Owned(rows)) => {
                         match rows.len() {
                             0 => true, // TODO: should prompt the user to provide her objection intention.
-                            1 => {
-                                if let DataType::Int(ob) = rows[0][1] {
-                                    ob == 0 // here we specify 1 as objected and 0 as not objected.
-                                } else {
-                                    unreachable!();
-                                }
-                            }
+                            1 => rows[0][self.value_column] == 0.into(), // here we specify 1 as objected and 0 as not objected.
                             _ => unreachable!(), // normally, should be only one record for objection
                         }
                     }
