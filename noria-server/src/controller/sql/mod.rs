@@ -22,9 +22,10 @@ use nom_sql::parser as sql_parser;
 use nom_sql::{ArithmeticBase, CreateTableStatement, SqlQuery};
 use nom_sql::{CompoundSelectOperator, CompoundSelectStatement, SelectStatement};
 use petgraph::graph::NodeIndex;
+use petgraph::Direction;
 
 use slog;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str;
 use std::vec::Vec;
 
@@ -153,12 +154,38 @@ impl SqlIncorporator {
         };
         if let Ok(qfp) = &result {
             if let Some(purpose) = &copied {
+                let mut nodes_for_query: HashSet<NodeIndex> = HashSet::new();
+                let mut frontier: Vec<NodeIndex> = Vec::new();
                 for ni in &qfp.new_nodes {
-                    mig.mainline.ingredients[*ni].add_purpose(purpose);
+                    frontier.push(*ni);
+                    nodes_for_query.insert(*ni);
                 }
                 for ni in &qfp.reused_nodes {
-                    mig.mainline.ingredients[*ni].add_purpose(purpose);
+                    frontier.push(*ni);
+                    nodes_for_query.insert(*ni);
                 }
+
+                // BFS to get all the left base nodes.
+                while frontier.len() > 0 {
+                    let mut new_frontier: Vec<NodeIndex> = Vec::new();
+                    for ni in &frontier {
+                        mig.mainline
+                            .ingredients
+                            .neighbors_directed(*ni, Direction::Incoming)
+                            .for_each(|parent| {
+                                if !nodes_for_query.contains(&parent) {
+                                    new_frontier.push(parent.clone());
+                                    nodes_for_query.insert(parent);
+                                }
+                            });
+                    }
+                    frontier = new_frontier;
+                }
+
+                // Add purposes to all related nodes.
+                nodes_for_query.iter().for_each(|ni| {
+                    mig.mainline.ingredients[*ni].add_purpose(purpose);
+                });
             }
         }
         result

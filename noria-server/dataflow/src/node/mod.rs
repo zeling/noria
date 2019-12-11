@@ -182,7 +182,7 @@ impl Node {
         for desc in &self.purposes {
             vec.push(String::from(desc));
         }
-        format!("Used in following purposes:\n{}", vec.join("\n"))
+        format!("{}", vec.join(","))
     }
 
     pub fn fields(&self) -> &[String] {
