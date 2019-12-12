@@ -76,3 +76,6 @@ name = "sender"
 
 [[example]]
 name = "receiver"
+
+[[example]]
+name = "purpose_demo"

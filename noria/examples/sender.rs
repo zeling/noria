@@ -9,8 +9,6 @@ async fn main() {
                CREATE TABLE Visit(name varchar(255), url varchar(255)) USER_COLUMN = name;
                QUERY VisitedWebsites: SELECT Visit.url FROM Visit WHERE Visit.name = ?;
                QUERY DateOfBirth: SELECT User.dob FROM User WHERE User.name = ?;
-               # internal view, for shorthand below
-               # QUERY user_with_visit: SELECT Age.age FROM User, Age WHERE User.uid = Age.uid AND User.name = ?;
                ";
     let user1 = "Alice";
     let user2 = "Bob";
@@ -49,5 +47,5 @@ async fn main() {
     tbl.delete(vec![user2.into(), "1996-04-01".into()]).await.unwrap();
     let mut dob_view = srv.view("DateOfBirth").await.unwrap();
     let dobs = dob_view.lookup(&[user2.into()], true).await.unwrap();
-    println!("{:#?}", dobs);
+    eprintln!("{:#?}", dobs);
 }

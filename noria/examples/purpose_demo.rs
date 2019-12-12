@@ -5,8 +5,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 async fn main() {
     // inline recipe definition
     let sql = "# base tables
-               CREATE TABLE Account (username varchar(255), phone varchar(255), \
-                                    location varchar(255), PRIMARY KEY(username));
                CREATE TABLE Product (pid varchar(255), name varchar(255), \
                                     category varchar(255), PRIMARY KEY(pid));
                CREATE TABLE Purchase (username varchar(255), pid varchar(255), \
@@ -14,9 +12,6 @@ async fn main() {
                CREATE TABLE Visit (username varchar(255), pid varchar(255), \
                                     visit_id varchar(255), PRIMARY KEY(pid));                  
  
-               # internal view, for shorthand below
-               # VoteCount: SELECT Vote.username, COUNT(DISTINCT uid) AS votes \
-                            FROM Vote GROUP BY Vote.username;
                # queryable materialized view
                QUERY ADS_PurchaseCategory: \
                             SELECT Purchase.username, Product.category, COUNT(purchase_id) AS count \

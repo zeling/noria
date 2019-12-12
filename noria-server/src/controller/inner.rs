@@ -765,7 +765,6 @@ impl ControllerInner {
     }
 
     fn purposes(&self) -> BTreeMap<String, String> {
-        info!(self.log, "asked to fetch purposes.");
         self.ingredients
             .neighbors_directed(self.source, petgraph::EdgeDirection::Outgoing)
             .map(|n| {

@@ -8,8 +8,6 @@ async fn main() {
                CREATE TABLE User(name varchar(255), dob varchar(255)) USER_COLUMN = name;
                CREATE TABLE Visit(name varchar(255), url varchar(255)) USER_COLUMN = name;
                QUERY VisitedWebsites: SELECT Visit.url FROM Visit WHERE Visit.name = ?;
-               # internal view, for shorthand below
-               # QUERY user_with_visit: SELECT Age.age FROM User, Age WHERE User.uid = Age.uid AND User.name = ?;
                ";
     let user = "Alice";
     let mut srv = ControllerHandle::from_zk("127.0.0.1:2181/receiver")
