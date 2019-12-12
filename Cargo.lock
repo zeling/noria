@@ -1714,7 +1714,7 @@ dependencies = [
 [[package]]
 name = "nom-sql"
 version = "0.0.9"
-source = "git+https://github.com/zeling/nom-sql#69a5cf59942fe45678d2e0bb30866aec6c0c60fe"
+source = "git+https://github.com/zeling/nom-sql#96b59e043ff74ad037ceb3403c6a7a736909736d"
 dependencies = [
  "nom 4.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.102 (registry+https://github.com/rust-lang/crates.io-index)",

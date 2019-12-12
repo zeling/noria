@@ -230,7 +230,7 @@ impl Base {
                     continue;
                 }
                 TableOperation::Delete { .. } => {
-                    if current.is_some() {
+                    if current.is_some() && self.del_policy == DeletionPolicy::Deletable {
                         current = None;
                     } else {
                         // supposed to delete a non-existing row?
