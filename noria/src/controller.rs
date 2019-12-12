@@ -332,6 +332,13 @@ impl<A: Authority + 'static> ControllerHandle<A> {
         let shards: HashMap<String, Vec<Vec<u8>>> = self
             .rpc("export_user_shard", user_id, "failed to export user shard")
             .await?;
+        for (base, rows) in shards.iter() {
+            let mut tbl = self.table(&base).await?;
+            for row in rows.iter() {
+                let deser: Vec<crate::data::DataType> = bincode::deserialize(&*row).unwrap();
+                tbl.delete(deser).await?;
+            }
+        }
         encrypt_and_sign(shards, f, me, recipient)
     }
 

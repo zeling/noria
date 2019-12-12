@@ -466,8 +466,9 @@ impl Recipe {
                             Err(e) => {
                                 crit!(
                                     self.log,
-                                    "failed to remove base {} whose  address could not be resolved",
-                                    ctq.table.name
+                                    "failed to remove base {} whose address could not be resolved: {}",
+                                    ctq.table.name,
+                                    e
                                 );
                                 unimplemented!()
                             }

@@ -45,6 +45,7 @@ impl Base {
     /// Builder with a user column
     pub fn with_user_column(mut self, user_column: Option<usize>) -> Base {
         self.user_column = user_column;
+        self.primary_key = Some((0..self.defaults.len()).collect());
         self
     }
 

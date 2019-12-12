@@ -70,3 +70,9 @@ name = "noria"
 
 [[example]]
 name = "quickstart"
+
+[[example]]
+name = "sender"
+
+[[example]]
+name = "receiver"
